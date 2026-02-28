@@ -192,10 +192,35 @@ function showChampionDetails(champId) {
     h += '</div>';
     if (champ.ability.desc) {
       let desc = champ.ability.desc;
-      // Clean TFT ability desc placeholders like @AbilityValue@
-      desc = desc.replace(/@[^@]+@/g, '?');
-      // strip inline html tags, %i:scale...% tokens, &nbsp;
-      desc = desc.replace(/<[^>]*>/g, '').replace(/%i:[^%]+%/g, '').replace(/&nbsp;/g, ' ').replace(/\s{2,}/g, ' ').trim();
+      const vars = champ.ability.variables || {};
+      // Resolve @VarName@ and @VarName*N@ tokens using ability variables
+      desc = desc.replace(/@([^@]+)@/g, function(_m, token) {
+        // Handle multiplication: @VarName*100@ → VarName × 100
+        var multMatch = token.match(/^(.+?)\*(\d+(?:\.\d+)?)$/);
+        var varName = multMatch ? multMatch[1] : token;
+        var mult = multMatch ? parseFloat(multMatch[2]) : 1;
+        var vals = vars[varName];
+        if (!vals || !Array.isArray(vals)) return '?';
+        // Star levels at indices 1 (1★), 2 (2★), 3 (3★)
+        var starVals = [vals[1], vals[2], vals[3]].map(function(v) {
+          if (v == null) return null;
+          var n = v * mult;
+          return n % 1 === 0 ? String(n) : n.toFixed(1).replace(/\.0$/, '');
+        }).filter(function(v) { return v !== null; });
+        if (starVals.length === 0) return '?';
+        // If all values are the same, show just one
+        if (starVals.every(function(v) { return v === starVals[0]; })) return starVals[0];
+        // Show as star-level breakdown with colors
+        var colors = ['#a67c52', '#94a3b8', '#e6a030'];
+        return starVals.map(function(v, i) {
+          return '<span style="color:' + colors[i] + ';font-weight:600">' + v + '</span>';
+        }).join('<span style="color:var(--muted)">/</span>');
+      });
+      // Replace %i:icon% tokens with stat labels
+      var iconLabels = {scaleAD:'AD',scaleAP:'AP',scaleAS:'Attack Speed',scaleArmor:'Armor',scaleCrit:'Crit Chance',scaleCritMult:'Crit Damage',scaleDA:'Damage Amp',scaleDR:'Damage Reduction',scaleHealth:'Health',scaleMR:'Magic Resist',scaleSV:'Omnivamp'};
+      desc = desc.replace(/%i:([^%]+)%/g, function(_m, icon) { return iconLabels[icon] || ''; });
+      // Strip inline HTML tags (but keep our injected spans), clean &nbsp;
+      desc = desc.replace(/<(?!\/?span\b)[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s{2,}/g, ' ').trim();
       h += '<p class="cd-ability-desc">' + desc + '</p>';
     }
     h += '</div></div>';
