@@ -766,6 +766,17 @@ section.content { animation:fadeUp .45s cubic-bezier(.4,0,.2,1) both; }
     text-transform:uppercase; letter-spacing:.02em;
 }
 .cd-ability-desc { font-size:.85rem; line-height:1.6; color:var(--muted); }
+.cd-ability-desc .kw-tag {
+    display:inline; font-weight:700; color:var(--brand);
+}
+.cd-ability-desc .stat-icon {
+    display:inline-flex; align-items:center; gap:2px;
+    font-weight:700; font-size:.78rem; vertical-align:baseline;
+    margin:0 1px;
+}
+.cd-ability-desc .stat-icon svg {
+    display:inline-block; vertical-align:-1px; flex-shrink:0;
+}
 
 /* ═══ Header Search ═══ */
 .header-search { position:relative; display:flex; align-items:center; }

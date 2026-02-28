@@ -193,13 +193,126 @@ function showChampionDetails(champId) {
     if (champ.ability.desc) {
       let desc = champ.ability.desc;
       const vars = champ.ability.variables || {};
+
+      // Build case-insensitive lookup map for variable names
+      var varKeys = Object.keys(vars);
+      var varKeysLower = {};
+      varKeys.forEach(function(k) { varKeysLower[k.toLowerCase()] = k; });
+
+      /**
+       * Smart variable lookup: CDragon descriptions use prefixed tokens
+       * like @ModifiedDamage@ or @TotalDamage@ but the raw variable names
+       * are unprefixed (e.g. "Damage", "ADDamage"). This resolves them
+       * through a series of fallback strategies.
+       */
+      function resolveVar(token) {
+        // 1. Direct lookup
+        if (vars[token]) return vars[token];
+        // 1b. Case-insensitive direct lookup
+        if (varKeysLower[token.toLowerCase()]) return vars[varKeysLower[token.toLowerCase()]];
+
+        // 2. Strip known prefixes (may be stacked: FirstCastModifiedDamage)
+        var prefixRe = /^(Modified|Total|Reduced|Bonus|FirstCast|SecondCast|ThirdCast)/;
+        var stripped = token;
+        while (prefixRe.test(stripped)) {
+          stripped = stripped.replace(prefixRe, '');
+        }
+        if (stripped && stripped !== token) {
+          if (vars[stripped]) return vars[stripped];
+          if (varKeysLower[stripped.toLowerCase()])
+            return vars[varKeysLower[stripped.toLowerCase()]];
+
+          // 3. After stripping, try AD/AP/Flat/Base/Percent prefix variants
+          var prefixes = ['AP', 'AD', 'Flat', 'Base', 'Percent'];
+          for (var pi = 0; pi < prefixes.length; pi++) {
+            var candidate = prefixes[pi] + stripped;
+            if (vars[candidate]) return vars[candidate];
+            if (varKeysLower[candidate.toLowerCase()])
+              return vars[varKeysLower[candidate.toLowerCase()]];
+          }
+
+          // 3b. Try inserting AD/AP before "Damage" within compound names
+          //     e.g. "DivebombDamage" → "DivebombADDamage"
+          if (/Damage/i.test(stripped)) {
+            for (var di = 0; di < prefixes.length; di++) {
+              var infixed = stripped.replace(/Damage/i, prefixes[di] + 'Damage');
+              if (vars[infixed]) return vars[infixed];
+              if (varKeysLower[infixed.toLowerCase()])
+                return vars[varKeysLower[infixed.toLowerCase()]];
+            }
+          }
+
+          // 4. Handle _Suffix pattern: @ModifiedDamage_Q@ → QDamage
+          var suffixMatch = stripped.match(/^(.+?)_(\w+)$/);
+          if (suffixMatch) {
+            var rearranged = suffixMatch[2] + suffixMatch[1];
+            if (vars[rearranged]) return vars[rearranged];
+            if (varKeysLower[rearranged.toLowerCase()])
+              return vars[varKeysLower[rearranged.toLowerCase()]];
+          }
+        }
+
+        // 5. Fuzzy: find a variable whose name ends with the token (after stripping)
+        var search = (stripped && stripped !== token ? stripped : token).toLowerCase();
+        for (var fi = 0; fi < varKeys.length; fi++) {
+          var vk = varKeys[fi].toLowerCase();
+          if (vk.endsWith(search) || search.endsWith(vk)) return vars[varKeys[fi]];
+        }
+
+        // 6. Substring containment: find variable name contained in token or vice versa
+        //    Prefer longest match
+        var bestMatch = null;
+        var bestLen = 0;
+        for (var si = 0; si < varKeys.length; si++) {
+          var vkl = varKeys[si].toLowerCase();
+          if (search.includes(vkl) && vkl.length > bestLen) {
+            bestMatch = varKeys[si];
+            bestLen = vkl.length;
+          } else if (vkl.includes(search) && search.length > bestLen) {
+            bestMatch = varKeys[si];
+            bestLen = search.length;
+          }
+        }
+        if (bestMatch) return vars[bestMatch];
+
+        // 7. Word-segment overlap: split camelCase into words, find the variable
+        //    that shares the most words. Resolves e.g. MinDamage → MinAOEDamage,
+        //    AOEDamage → MagicDamageAOE, ActiveDamage → ActiveMRDamage
+        var originalForSplit = stripped && stripped !== token ? stripped : token;
+        var words = originalForSplit.replace(/([a-z])([A-Z])/g, '$1 $2')
+          .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+          .toLowerCase().split(/\s+/);
+        if (words.length >= 2) {
+          var bestWordMatch = null;
+          var bestWordScore = 0;
+          for (var wi = 0; wi < varKeys.length; wi++) {
+            var vWords = varKeys[wi].replace(/([a-z])([A-Z])/g, '$1 $2')
+              .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+              .toLowerCase().split(/\s+/);
+            var overlap = 0;
+            for (var wj = 0; wj < words.length; wj++) {
+              if (vWords.indexOf(words[wj]) !== -1) overlap++;
+            }
+            if (overlap > bestWordScore) {
+              bestWordScore = overlap;
+              bestWordMatch = varKeys[wi];
+            }
+          }
+          if (bestWordMatch && bestWordScore >= 2) return vars[bestWordMatch];
+        }
+
+        return null;
+      }
+
       // Resolve @VarName@ and @VarName*N@ tokens using ability variables
       desc = desc.replace(/@([^@]+)@/g, function(_m, token) {
+        // Skip TFTUnitProperty (runtime game state, can't resolve statically)
+        if (token.startsWith('TFTUnitProperty')) return '';
         // Handle multiplication: @VarName*100@ → VarName × 100
         var multMatch = token.match(/^(.+?)\*(\d+(?:\.\d+)?)$/);
         var varName = multMatch ? multMatch[1] : token;
         var mult = multMatch ? parseFloat(multMatch[2]) : 1;
-        var vals = vars[varName];
+        var vals = resolveVar(varName);
         if (!vals || !Array.isArray(vals)) return '?';
         // Star levels at indices 1 (1★), 2 (2★), 3 (3★)
         var starVals = [vals[1], vals[2], vals[3]].map(function(v) {
@@ -216,11 +329,44 @@ function showChampionDetails(champId) {
           return '<span style="color:' + colors[i] + ';font-weight:600">' + v + '</span>';
         }).join('<span style="color:var(--muted)">/</span>');
       });
-      // Replace %i:icon% tokens with stat labels
-      var iconLabels = {scaleAD:'AD',scaleAP:'AP',scaleAS:'Attack Speed',scaleArmor:'Armor',scaleCrit:'Crit Chance',scaleCritMult:'Crit Damage',scaleDA:'Damage Amp',scaleDR:'Damage Reduction',scaleHealth:'Health',scaleMR:'Magic Resist',scaleSV:'Omnivamp'};
-      desc = desc.replace(/%i:([^%]+)%/g, function(_m, icon) { return iconLabels[icon] || ''; });
+
+      // Resolve {{TFT_Keyword_X}} tags with readable descriptions
+      var keywordDefs = {
+        'TFT_Keyword_Chill': '<span class="kw-tag">Chill</span>: Reduce attack speed by 30%',
+        'TFT_Keyword_Shred': '<span class="kw-tag">Shred</span>: Reduce Magic Resist by 40% for 5 seconds',
+        'TFT_Keyword_Wound': '<span class="kw-tag">Wound</span>: Reduce healing received by 33% for 5 seconds',
+        'TFT_Keyword_Burn': '<span class="kw-tag">Burn</span>: Deal 2% max Health true damage over 5 seconds. Reduce healing by 33%',
+        'TFT_Keyword_Sunder': '<span class="kw-tag">Sunder</span>: Reduce Armor by 40% for 5 seconds',
+      };
+      desc = desc.replace(/\{\{([^}]+)\}\}/g, function(_m, kw) {
+        return keywordDefs[kw] || '';
+      });
+
+      // Replace %i:icon% tokens with styled stat icons
+      var statIcons = {
+        scaleAD: { label: 'AD', color: '#fb923c', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/></svg>' },
+        scaleAP: { label: 'AP', color: '#c084fc', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>' },
+        scaleAS: { label: 'AS', color: '#a3e635', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' },
+        scaleArmor: { label: 'Armor', color: '#eab308', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>' },
+        scaleMR: { label: 'MR', color: '#818cf8', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8l1.5 3H15l-1.5 2L15 16h-2l-1-2-1 2H9l1.5-3L9 11h1.5z"/></svg>' },
+        scaleHealth: { label: 'HP', color: '#2dd4bf', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>' },
+        scaleCrit: { label: 'Crit', color: '#f87171', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>' },
+        scaleCritMult: { label: 'Crit Dmg', color: '#f87171', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>' },
+        scaleDA: { label: 'Dmg Amp', color: '#a78bfa', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>' },
+        scaleDR: { label: 'DR', color: '#eab308', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>' },
+        scaleSV: { label: 'Omnivamp', color: '#fb7185', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>' },
+        scaleSouls: { label: 'Souls', color: '#67e8f9', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="10" r="7"/><path d="M8 17c0 2.2 1.8 4 4 4s4-1.8 4-4"/></svg>' },
+        TFTBaseAD: { label: 'AD', color: '#fb923c', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/></svg>' },
+      };
+      desc = desc.replace(/%i:([^%]+)%/g, function(_m, icon) {
+        var info = statIcons[icon];
+        if (!info) return '';
+        return '<span class="stat-icon" style="color:' + info.color + '">' + info.svg + '<span>' + info.label + '</span></span>';
+      });
       // Strip inline HTML tags (but keep our injected spans), clean &nbsp;
       desc = desc.replace(/<(?!\/?span\b)[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s{2,}/g, ' ').trim();
+      // Clean up orphaned empty parens and double spaces from removed tokens
+      desc = desc.replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
       h += '<p class="cd-ability-desc">' + desc + '</p>';
     }
     h += '</div></div>';
