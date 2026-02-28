@@ -215,6 +215,13 @@ function resolveTraitDesc(rawDesc: string, effects: Array<{ minUnits: number; ma
   let summary = summaryLines.join('<br>').replace(/(<br\s*\/?>[\s]*){3,}/gi, '<br><br>')
     .replace(/^(<br\s*\/?>[\s]*)+/gi, '').replace(/(<br\s*\/?>[\s]*)+$/gi, '').trim();
 
+  // 4b. If description was entirely <row> elements, summary is now empty.
+  //     Pull the first detail row's text as the summary so there's always visible text.
+  if (!summary && detailRows.length > 0) {
+    summary = detailRows[0].text;
+    detailRows.splice(0, 1);
+  }
+
   // 5. Colorize slash-separated numbers (e.g. 350/600/2000 → star-level colors)
   const starColors = ['#a67c52', '#94a3b8', '#e6a030', '#e84e4e'];
   summary = summary.replace(/\b(\d+(?:\.\d+)?(?:%?))((?:\/\d+(?:\.\d+)?(?:%?)){1,3})\b/g, (full) => {
