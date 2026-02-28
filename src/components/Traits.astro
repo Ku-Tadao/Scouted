@@ -41,7 +41,7 @@ const typeLabels: Record<string, string> = {
                     </div>
                 </div>
                 {trait.desc && (
-                    <p class={`trait-desc${trait.descDetails.length > 0 ? ' has-details' : ''}`}>{trait.desc.replace(/<br>/g, ' ')}</p>
+                    <p class={`trait-desc${trait.descDetails.length > 0 ? ' has-details' : ''}`} set:html={trait.desc.replace(/<br>/g, ' ')} />
                 )}
                 <div class="trait-breakpoints">
                     {trait.effects.map(e => (

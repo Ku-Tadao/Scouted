@@ -212,8 +212,18 @@ function resolveTraitDesc(rawDesc: string, effects: Array<{ minUnits: number; ma
   const summaryLines = desc.split(/<br\s*\/?>/i)
     .map(cleanLine)
     .filter(s => !isGarbageLine(s));
-  const summary = summaryLines.join('<br>').replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>')
-    .replace(/^(<br\s*\/?>\s*)+/gi, '').replace(/(<br\s*\/?>\s*)+$/gi, '').trim();
+  let summary = summaryLines.join('<br>').replace(/(<br\s*\/?>[\s]*){3,}/gi, '<br><br>')
+    .replace(/^(<br\s*\/?>[\s]*)+/gi, '').replace(/(<br\s*\/?>[\s]*)+$/gi, '').trim();
+
+  // 5. Colorize slash-separated numbers (e.g. 350/600/2000 → star-level colors)
+  const starColors = ['#a67c52', '#94a3b8', '#e6a030', '#e84e4e'];
+  summary = summary.replace(/\b(\d+(?:\.\d+)?(?:%?))((?:\/\d+(?:\.\d+)?(?:%?)){1,3})\b/g, (full) => {
+    const parts = full.split('/');
+    return parts.map((p, i) => {
+      const color = starColors[Math.min(i, starColors.length - 1)];
+      return `<span style="color:${color};font-weight:600">${p}</span>`;
+    }).join('<span style="color:var(--muted)">/</span>');
+  });
 
   return { summary, details: detailRows };
 }
