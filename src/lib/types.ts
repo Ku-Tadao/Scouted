@@ -40,10 +40,17 @@ export interface TFTItem {
   uniqueId: string;
 }
 
+export interface TraitDetailRow {
+  style: number;
+  minUnits: number;
+  text: string;
+}
+
 export interface TFTTrait {
   key: string;
   name: string;
   desc: string;
+  descDetails: TraitDetailRow[];
   icon: string;
   type: 'origin' | 'class' | 'unique' | 'teamup';
   style: number;

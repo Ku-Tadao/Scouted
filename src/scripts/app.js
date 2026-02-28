@@ -350,10 +350,21 @@ function bind() {
   const ts = document.getElementById('traitSearch');
   if (ts) ts.addEventListener('input', (e) => filterTraits(e.target.value));
 
-  // Trait description click-to-expand
-  document.querySelectorAll('.trait-desc').forEach((el) =>
-    el.addEventListener('click', () => el.classList.toggle('expanded'))
-  );
+  // Trait description click-to-expand (also toggles detail rows)
+  document.querySelectorAll('.trait-desc').forEach((el) => {
+    el.addEventListener('click', () => {
+      el.classList.toggle('expanded');
+      const card = el.closest('.trait-card');
+      if (!card) return;
+      const details = card.querySelector('.trait-details');
+      if (!details) return;
+      const show = el.classList.contains('expanded');
+      details.style.display = show ? 'flex' : 'none';
+      // Hide the summary breakpoint badges when details are visible
+      const bp = card.querySelector('.trait-breakpoints');
+      if (bp) bp.style.display = show ? 'none' : 'flex';
+    });
+  });
 
   // Trait champion clicks → open champion modal
   document.querySelectorAll('.trait-champ-entry').forEach((el) =>

@@ -512,10 +512,16 @@ section.content { animation:fadeUp .45s cubic-bezier(.4,0,.2,1) both; }
     padding:.15rem .4rem; border-radius:6px; border:1px solid var(--border);
     background:var(--surface-strong); color:var(--muted);
 }
-.bp-style-1 { background:rgba(196,132,29,0.1); color:var(--brand); border-color:color-mix(in srgb,var(--brand) 25%,transparent); }
-.bp-style-2 { background:rgba(148,163,184,0.1); color:var(--cost-1); border-color:color-mix(in srgb,var(--cost-1) 25%,transparent); }
-.bp-style-3 { background:rgba(245,158,11,0.1); color:var(--cost-5); border-color:color-mix(in srgb,var(--cost-5) 25%,transparent); }
-.bp-style-4 { background:rgba(168,85,247,0.1); color:var(--cost-4); border-color:color-mix(in srgb,var(--cost-4) 25%,transparent); }
+/* style 1 = Bronze */
+.bp-style-1 { background:rgba(166,124,82,0.12); color:#a67c52; border-color:rgba(166,124,82,0.3); }
+/* style 3 = Silver */
+.bp-style-3 { background:rgba(148,163,184,0.12); color:#94a3b8; border-color:rgba(148,163,184,0.3); }
+/* style 4 = Unique/Platinum */
+.bp-style-4 { background:rgba(56,189,176,0.12); color:#38bdb0; border-color:rgba(56,189,176,0.3); }
+/* style 5 = Gold */
+.bp-style-5 { background:rgba(230,160,48,0.12); color:#e6a030; border-color:rgba(230,160,48,0.3); }
+/* style 6 = Chromatic/Prismatic */
+.bp-style-6 { background:rgba(232,78,78,0.12); color:#e84e4e; border-color:rgba(232,78,78,0.3); }
 .trait-champ-list { display:flex; gap:.35rem; flex-wrap:wrap; align-items:center; }
 .trait-champ-entry {
     display:inline-flex; align-items:center; gap:.25rem; padding:.15rem .35rem .15rem .15rem;
@@ -540,12 +546,30 @@ section.content { animation:fadeUp .45s cubic-bezier(.4,0,.2,1) both; }
 .trait-champ-overflow { display:contents; }
 .trait-desc {
     font-size:.78rem; color:var(--muted); line-height:1.5; margin:0 0 .5rem;
-    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
-    cursor:pointer; transition:all .2s ease;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+    transition:all .2s ease;
+}
+.trait-desc.has-details {
+    cursor:pointer;
+}
+.trait-desc.has-details:hover {
+    color:var(--text);
 }
 .trait-desc.expanded {
     -webkit-line-clamp:unset; display:block;
 }
+/* Expandable trait details */
+.trait-details {
+    margin-bottom:.5rem; display:flex; flex-direction:column; gap:.25rem;
+}
+.trait-detail-row {
+    display:flex; align-items:center; gap:.4rem;
+    font-size:.75rem; color:var(--text); line-height:1.4;
+}
+.trait-detail-row .bp-badge {
+    min-width:1.5rem; text-align:center; flex-shrink:0;
+}
+.trait-detail-text { color:var(--muted); }
 
 /* ═══ Augments Page ═══ */
 .augments-grid {

@@ -1,4 +1,4 @@
-import type { TFTChampion, TFTItem, TFTTrait, TFTAugment, ScoutedData } from './types';
+import type { TFTChampion, TFTItem, TFTTrait, TFTAugment, ScoutedData, TraitDetailRow } from './types';
 
 /**
  * Scouted — TFT Data Fetching
@@ -142,60 +142,80 @@ function resolveVarsInText(text: string, effect: { minUnits: number; maxUnits: n
 }
 
 /**
- * Resolve a trait description by substituting variables from effects.
- * - <expandRow> templates are expanded once per effect
- * - <row> entries map 1:1 to effects in order
- * - Remaining variables use the first effect's values
- * - Runtime @TFTUnitProperty...@ tokens are removed
- * - %i:scale...% icon tokens and HTML (except <br>) are stripped
+ * Clean a line of text: strip icon tokens, HTML, orphaned formatting.
  */
-function resolveTraitDesc(rawDesc: string, effects: Array<{ minUnits: number; maxUnits: number; style: number; variables: Record<string, number> }>): string {
-  if (!rawDesc || effects.length === 0) return rawDesc || '';
+function cleanLine(s: string): string {
+  return s
+    .replace(/%i:[^%]+%/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/\(\?\)/g, '')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/**
+ * Test if a line is garbage and should be discarded.
+ */
+function isGarbageLine(s: string): boolean {
+  if (!s) return true;
+  if (/^[^:]+:\s*[^a-zA-Z]*$/.test(s)) return true;
+  if (!/[a-zA-Z]/.test(s) && !s.startsWith('(')) return true;
+  return false;
+}
+
+/**
+ * Resolve a trait description by substituting variables from effects.
+ * Returns { summary, details } where summary is plain text and details
+ * are structured breakpoint rows (style + text).
+ */
+function resolveTraitDesc(rawDesc: string, effects: Array<{ minUnits: number; maxUnits: number; style: number; variables: Record<string, number> }>): { summary: string; details: TraitDetailRow[] } {
+  const empty = { summary: rawDesc || '', details: [] as TraitDetailRow[] };
+  if (!rawDesc || effects.length === 0) return empty;
+
+  const detailRows: TraitDetailRow[] = [];
   let desc = rawDesc;
 
-  // 1. Expand <expandRow>...</expandRow> once per effect
+  /** Strip leading \"(number) \" prefix from a detail row since the badge shows it. */
+  function stripLeadingUnits(s: string): string {
+    return s.replace(/^\(\d+\)\s*/, '').replace(/^,\s*/, '').trim();
+  }
+
+  // 1. Extract <expandRow> templates → one detail row per effect
   desc = desc.replace(/<expandRow>(.*?)<\/expandRow>/gi, (_m, template: string) => {
-    return effects.map((e) => resolveVarsInText(template, e)).join('<br>');
+    effects.forEach((e) => {
+      const resolved = stripLeadingUnits(cleanLine(resolveVarsInText(template, e)));
+      if (resolved) {
+        detailRows.push({ style: e.style, minUnits: e.minUnits, text: resolved });
+      }
+    });
+    return ''; // remove from desc
   });
 
-  // 2. Resolve <row>...</row> entries — each maps to the next effect in order
+  // 2. Extract <row> entries → one detail row each, mapped to effects in order
   let rowIdx = 0;
   desc = desc.replace(/<row>(.*?)<\/row>/gi, (_m, rowText: string) => {
     const effect = effects[rowIdx] ?? effects[effects.length - 1];
+    const resolved = stripLeadingUnits(cleanLine(resolveVarsInText(rowText, effect)));
+    if (resolved) {
+      detailRows.push({ style: effect.style, minUnits: effect.minUnits, text: resolved });
+    }
     rowIdx++;
-    return resolveVarsInText(rowText, effect);
+    return ''; // remove from desc
   });
 
   // 3. Resolve remaining @var@ tokens using the first effect
   desc = resolveVarsInText(desc, effects[0]);
 
-  // 4. Strip %i:scale...% icon tokens
-  desc = desc.replace(/%i:[^%]+%/g, '');
-  // 5. Replace &nbsp; with space
-  desc = desc.replace(/&nbsp;/g, ' ');
-  // 6. Strip HTML tags except <br>
-  desc = desc.replace(/<(?!br\s*\/?>)[^>]*>/gi, '');
-  // 7. Clean up orphaned formatting
-  desc = desc.replace(/\(\?\)/g, '');    // empty (?) from unresolved vars
-  desc = desc.replace(/\(\s*\)/g, '');    // empty () from stripped icon tokens
-  // 8. Split on <br>, clean each line, filter out garbage
-  const lines = desc.split(/<br\s*\/?>/i)
-    .map(s => s.replace(/\s{2,}/g, ' ').trim())
-    .filter(s => {
-      if (!s) return false;
-      // Drop "Label:" lines where content after colon has no letters (runtime status displays)
-      if (/^[^:]+:\s*[^a-zA-Z]*$/.test(s)) return false;
-      // Drop lines with no letters that aren't breakpoint rows — orphaned formatting like "% , %"
-      if (!/[a-zA-Z]/.test(s) && !s.startsWith('(')) return false;
-      return true;
-    });
-  desc = lines.join('<br>');
-  // Clean up excessive <br> sequences
-  desc = desc.replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>');
-  // Remove leading/trailing <br>
-  desc = desc.replace(/^(<br\s*\/?>\s*)+/gi, '').replace(/(<br\s*\/?>\s*)+$/gi, '');
+  // 4. Clean the summary text
+  const summaryLines = desc.split(/<br\s*\/?>/i)
+    .map(cleanLine)
+    .filter(s => !isGarbageLine(s));
+  const summary = summaryLines.join('<br>').replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>')
+    .replace(/^(<br\s*\/?>\s*)+/gi, '').replace(/(<br\s*\/?>\s*)+$/gi, '').trim();
 
-  return desc.trim();
+  return { summary, details: detailRows };
 }
 
 /**
@@ -227,10 +247,12 @@ function parseCDragonTraits(raw: any[]): TFTTrait[] {
         style: e.style ?? 0,
         variables: e.variables ?? {},
       }));
+      const { summary, details } = resolveTraitDesc(t.desc ?? '', effects);
       return {
         key: t.apiName ?? t.name ?? '',
         name: t.name ?? '',
-        desc: resolveTraitDesc(t.desc ?? '', effects),
+        desc: summary,
+        descDetails: details,
         icon: assetUrl(t.icon),
         type: classifyTraitType(t),
         style: t.style ?? 0,
