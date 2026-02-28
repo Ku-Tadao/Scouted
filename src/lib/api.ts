@@ -216,10 +216,10 @@ function resolveTraitDesc(rawDesc: string, effects: Array<{ minUnits: number; ma
     .replace(/^(<br\s*\/?>[\s]*)+/gi, '').replace(/(<br\s*\/?>[\s]*)+$/gi, '').trim();
 
   // 4b. If description was entirely <row> elements, summary is now empty.
-  //     Pull the first detail row's text as the summary so there's always visible text.
+  //     Use the first detail row's text as the summary so there's always visible text.
+  //     Keep the row in detailRows so its breakpoint badge still appears when expanded.
   if (!summary && detailRows.length > 0) {
     summary = detailRows[0].text;
-    detailRows.splice(0, 1);
   }
 
   // 5. Colorize slash-separated numbers (e.g. 350/600/2000 → star-level colors)
