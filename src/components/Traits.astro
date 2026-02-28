@@ -26,15 +26,23 @@ const typeLabels: Record<string, string> = {
     </div>
 
     <div class="traits-grid">
-        {traits.map(trait => (
+        {traits.map(trait => {
+            const MAX_SHOWN = 6;
+            const shown = trait.champions.slice(0, MAX_SHOWN);
+            const overflow = trait.champions.length - MAX_SHOWN;
+            const hidden = overflow > 0 ? trait.champions.slice(MAX_SHOWN) : [];
+            return (
             <div class="trait-card" data-trait-key={trait.key} data-trait-name={trait.name.toLowerCase()}>
                 <div class="trait-card-header">
-                    {trait.icon && <img src={trait.icon} alt={trait.name} loading="lazy" class="trait-icon" />}
+                    {trait.icon && <img src={trait.icon} alt="" loading="lazy" class="trait-icon" />}
                     <div class="trait-card-title">
                         <h4 class="trait-name">{trait.name}</h4>
                         <span class={`trait-type-badge trait-type-${trait.type}`}>{typeLabels[trait.type] ?? trait.type}</span>
                     </div>
                 </div>
+                {trait.desc && (
+                    <p class="trait-desc">{trait.desc.replace(/<[^>]*>/g, '').replace(/@[^@]+@/g, '?')}</p>
+                )}
                 <div class="trait-breakpoints">
                     {trait.effects.map(e => (
                         <span class={`bp-badge bp-style-${e.style}`}>{e.minUnits}</span>
@@ -42,18 +50,29 @@ const typeLabels: Record<string, string> = {
                 </div>
                 {trait.champions.length > 0 && (
                     <div class="trait-champ-list">
-                        {trait.champions.slice(0, 6).map(ch => (
-                            <div class="trait-champ-entry" title={ch.name}>
-                                {ch.icon && <img src={ch.icon} alt={ch.name} loading="lazy" class="trait-champ-portrait" />}
+                        {shown.map(ch => (
+                            <button class="trait-champ-entry" data-champ-id={ch.id} type="button" title={ch.name}>
+                                {ch.icon && <img src={ch.icon} alt="" loading="lazy" class="trait-champ-portrait" />}
                                 <span class="trait-champ-name">{ch.name}</span>
-                            </div>
+                            </button>
                         ))}
-                        {trait.champions.length > 6 && (
-                            <span class="trait-champ-more">+{trait.champions.length - 6}</span>
+                        {overflow > 0 && (
+                            <button class="trait-champ-more" type="button" data-expanded="false" title="Show all champions">+{overflow}</button>
+                        )}
+                        {hidden.length > 0 && (
+                            <div class="trait-champ-overflow" style="display:none">
+                                {hidden.map(ch => (
+                                    <button class="trait-champ-entry" data-champ-id={ch.id} type="button" title={ch.name}>
+                                        {ch.icon && <img src={ch.icon} alt="" loading="lazy" class="trait-champ-portrait" />}
+                                        <span class="trait-champ-name">{ch.name}</span>
+                                    </button>
+                                ))}
+                            </div>
                         )}
                     </div>
                 )}
             </div>
-        ))}
+            );
+        })}
     </div>
 </section>

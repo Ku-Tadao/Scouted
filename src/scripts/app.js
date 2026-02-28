@@ -349,6 +349,23 @@ function bind() {
   const ts = document.getElementById('traitSearch');
   if (ts) ts.addEventListener('input', (e) => filterTraits(e.target.value));
 
+  // Trait champion clicks → open champion modal
+  document.querySelectorAll('.trait-champ-entry').forEach((el) =>
+    el.addEventListener('click', () => { if (el.dataset.champId) showChampionDetails(el.dataset.champId); })
+  );
+
+  // Trait "+N" expand buttons
+  document.querySelectorAll('.trait-champ-more').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const overflow = btn.parentElement.querySelector('.trait-champ-overflow');
+      if (!overflow) return;
+      const expanded = btn.dataset.expanded === 'true';
+      overflow.style.display = expanded ? 'none' : 'contents';
+      btn.dataset.expanded = expanded ? 'false' : 'true';
+      btn.textContent = expanded ? btn.textContent : '−';
+    })
+  );
+
   // Augment search
   const as = document.getElementById('augmentSearch');
   if (as) as.addEventListener('input', (e) => filterAugments(e.target.value));

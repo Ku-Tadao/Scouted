@@ -143,7 +143,7 @@ function parseCDragonTraits(raw: any[]): TFTTrait[] {
         style: e.style ?? 0,
         variables: e.variables ?? {},
       })),
-      champions: [] as { name: string; icon: string }[],
+      champions: [] as { name: string; icon: string; id: string }[],
     }))
     .sort((a, b) => {
       // Sort: origins first, then classes, then unique/teamup
@@ -322,7 +322,7 @@ export async function fetchAllData(): Promise<ScoutedData> {
             t.name === traitName || t.key.toLowerCase().includes(traitName.toLowerCase().replace(/ /g, ''))
           );
           if (trait && !trait.champions.some(c => c.name === champ.name)) {
-            trait.champions.push({ name: champ.name, icon: champ.tileIcon || champ.icon });
+            trait.champions.push({ name: champ.name, icon: champ.tileIcon || champ.icon, id: champ.championId });
           }
         });
       });

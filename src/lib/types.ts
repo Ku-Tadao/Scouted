@@ -48,7 +48,7 @@ export interface TFTTrait {
   type: 'origin' | 'class' | 'unique' | 'teamup';
   style: number;
   effects: TraitEffect[];
-  champions: { name: string; icon: string }[];
+  champions: { name: string; icon: string; id: string }[];
 }
 
 export interface TraitEffect {
