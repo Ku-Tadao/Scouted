@@ -327,6 +327,18 @@ export async function fetchAllData(): Promise<ScoutedData> {
         });
       });
 
+      // Link team-up traits from apiName (e.g. TFT16_Teamup_EkkoZilean → Ekko, Zilean)
+      traits.filter(t => t.type === 'teamup' && t.champions.length === 0).forEach((trait) => {
+        const suffix = trait.key.split('_').pop() ?? '';
+        const names = suffix.match(/[A-Z][a-z]+/g) ?? [];
+        names.forEach((partial) => {
+          const champ = champions.find(c => c.name.includes(partial));
+          if (champ && !trait.champions.some(c => c.name === champ.name)) {
+            trait.champions.push({ name: champ.name, icon: champ.tileIcon || champ.icon, id: champ.championId });
+          }
+        });
+      });
+
       // ── Items (set-specific refs → resolved from top-level items) ──
       const setItemRefs: string[] = Array.isArray(currentSet.items) && typeof currentSet.items[0] === 'string'
         ? currentSet.items
