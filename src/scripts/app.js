@@ -242,7 +242,7 @@ function showItemDetails(itemId) {
   }
 
   // Effects
-  const efKeys = Object.keys(item.effects || {});
+  const efKeys = Object.keys(item.effects || {}).filter((k) => !/^\{[0-9a-f]+\}$/i.test(k));
   if (efKeys.length) {
     h += '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.75rem">';
     efKeys.forEach((k) => {
