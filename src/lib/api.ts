@@ -7,15 +7,12 @@ import type { TFTChampion, TFTItem, TFTTrait, TFTAugment, ScoutedData } from './
  * for static TFT data. Riot's TFT API endpoints are used
  * client-side for live data (leaderboard, match history).
  *
- * Current set: TFT Set 16 (as of Feb 2026)
+ * The current set is auto-detected from Community Dragon data
+ * so the site always stays up-to-date when a new set releases.
  */
 
 const CDRAGON_BASE = 'https://raw.communitydragon.org/latest';
 const DDRAGON_BASE = 'https://ddragon.leagueoflegends.com';
-
-// Current TFT set identifier — update when a new set releases
-const CURRENT_SET = 'TFTSet16';
-const CURRENT_SET_DISPLAY = 'Set 16';
 
 async function fetchJSON<T>(url: string, retries = 2): Promise<T | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -175,14 +172,41 @@ export async function fetchAllData(): Promise<ScoutedData> {
   let traits: TFTTrait[] = [];
   let augments: TFTAugment[] = [];
 
+  let setDisplay = 'Unknown';
+
   if (tftData) {
-    // cdragon structures data under setData and items
+    // cdragon structures data under setData (array) or sets (object)
     const setData = tftData.setData ?? tftData.sets;
-    const currentSet = Array.isArray(setData)
-      ? setData.find((s: any) => s.mutator === CURRENT_SET || s.number === 14)
-      : setData?.[CURRENT_SET] ?? setData?.['14'] ?? Object.values(setData ?? {})?.[Object.keys(setData ?? {}).length - 1];
+
+    // Auto-detect the latest set by finding the highest set number
+    let currentSet: any = null;
+
+    if (Array.isArray(setData)) {
+      // Array of sets — pick the one with the highest number
+      currentSet = setData.reduce((best: any, s: any) =>
+        !best || (s.number ?? 0) > (best.number ?? 0) ? s : best
+      , null);
+    } else if (setData && typeof setData === 'object') {
+      // Object keyed by set id (e.g. "TFTSet16", "14", etc.)
+      const keys = Object.keys(setData);
+      // Sort keys so the highest numbered set comes last
+      const sorted = keys.sort((a, b) => {
+        const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+        const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+        return numA - numB;
+      });
+      const latestKey = sorted[sorted.length - 1];
+      currentSet = setData[latestKey];
+    }
 
     if (currentSet) {
+      // Derive display name from the set number or mutator
+      const parsedNum = parseInt((currentSet.mutator ?? '').replace(/\D/g, ''), 10) || 0;
+      const setNum = currentSet.number ?? (parsedNum || null);
+      setDisplay = setNum ? `Set ${setNum}` : (currentSet.name ?? 'Latest');
+
+      console.log(`[Scouted] Auto-detected ${setDisplay} (mutator: ${currentSet.mutator ?? 'n/a'}, champions: ${(currentSet.champions ?? []).length})`);
+
       champions = parseCDragonChampions(currentSet.champions ?? []);
       traits = parseCDragonTraits(currentSet.traits ?? []);
 
@@ -213,7 +237,7 @@ export async function fetchAllData(): Promise<ScoutedData> {
     buildInfo: {
       generatedAt: new Date().toISOString(),
       patch,
-      set: CURRENT_SET_DISPLAY,
+      set: setDisplay,
     },
   };
 }
