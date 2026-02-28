@@ -246,7 +246,9 @@ function showItemDetails(itemId) {
   if (efKeys.length) {
     h += '<div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.75rem">';
     efKeys.forEach((k) => {
-      h += '<span style="font-size:.72rem;padding:.15rem .4rem;border-radius:6px;background:var(--surface-strong);color:var(--brand);font-weight:600;border:1px solid var(--border)">' + esc(k) + ': ' + esc(String(item.effects[k])) + '</span>';
+      const v = item.effects[k];
+      const vStr = typeof v === 'number' && !Number.isInteger(v) && String(v).split('.')[1]?.length > 2 ? v.toFixed(2) : String(v);
+      h += '<span style="font-size:.72rem;padding:.15rem .4rem;border-radius:6px;background:var(--surface-strong);color:var(--brand);font-weight:600;border:1px solid var(--border)">' + esc(k) + ': ' + esc(vStr) + '</span>';
     });
     h += '</div>';
   }
