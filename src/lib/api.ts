@@ -193,6 +193,13 @@ function resolveTraitDesc(rawDesc: string, effects: Array<{ minUnits: number; ma
   const detailRows: TraitDetailRow[] = [];
   let desc = rawDesc;
 
+  // 0. Strip runtime-only @TFTUnitProperty...@ tokens and their surrounding context.
+  //    These track in-game state (serpents, souls, forging progress, etc.) and can't
+  //    be resolved at build time. Remove the tokens, their labels, and <rules> wrappers.
+  desc = desc.replace(/<rules>[^<]*@TFTUnitProperty[^<]*<\/rules>/gi, '');
+  desc = desc.replace(/[^<\n]*@TFTUnitProperty[^@]*@[^<\n]*/gi, '');
+  desc = desc.replace(/Current (?:Bonus Stats|Stats|Serpents)\s*:?/gi, '');
+
   /** Strip leading \"(number) \" prefix from a detail row since the badge shows it. */
   function stripLeadingUnits(s: string): string {
     return s.replace(/^\(\d+\)\s*/, '').replace(/^,\s*/, '').trim();
