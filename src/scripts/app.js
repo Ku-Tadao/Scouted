@@ -354,15 +354,13 @@ function bind() {
     el.addEventListener('click', () => { if (el.dataset.champId) showChampionDetails(el.dataset.champId); })
   );
 
-  // Trait "+N" expand buttons
+  // Trait "+N" expand buttons (one-way expand, no collapse)
   document.querySelectorAll('.trait-champ-more').forEach((btn) =>
     btn.addEventListener('click', () => {
       const overflow = btn.parentElement.querySelector('.trait-champ-overflow');
       if (!overflow) return;
-      const expanded = btn.dataset.expanded === 'true';
-      overflow.style.display = expanded ? 'none' : 'contents';
-      btn.dataset.expanded = expanded ? 'false' : 'true';
-      btn.textContent = expanded ? btn.textContent : '−';
+      overflow.style.display = 'contents';
+      btn.style.display = 'none';
     })
   );
 
