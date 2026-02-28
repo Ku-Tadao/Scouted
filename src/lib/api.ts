@@ -141,16 +141,32 @@ function resolveVarsInText(text: string, effect: { minUnits: number; maxUnits: n
   });
 }
 
+/** Map %i:icon% tokens to readable stat labels. */
+const ICON_LABELS: Record<string, string> = {
+  scaleAD: 'AD',
+  scaleAP: 'AP',
+  scaleAS: 'Attack Speed',
+  scaleArmor: 'Armor',
+  scaleCrit: 'Crit Chance',
+  scaleCritMult: 'Crit Damage',
+  scaleDA: 'Damage Amp',
+  scaleDR: 'Damage Reduction',
+  scaleHealth: 'Health',
+  scaleMR: 'Magic Resist',
+  scaleSV: 'Omnivamp',
+};
+
 /**
- * Clean a line of text: strip icon tokens, HTML, orphaned formatting.
+ * Clean a line of text: replace icon tokens with labels, strip HTML, orphaned formatting.
  */
 function cleanLine(s: string): string {
   return s
-    .replace(/%i:[^%]+%/g, '')
+    .replace(/%i:([^%]+)%/g, (_m, icon: string) => ICON_LABELS[icon] ?? '')
     .replace(/&nbsp;/g, ' ')
     .replace(/<[^>]*>/g, '')
     .replace(/\(\?\)/g, '')
     .replace(/\(\s*\)/g, '')
+    .replace(/\s+,/g, ',')        // fix " ," → ","
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -236,6 +252,10 @@ function resolveTraitDesc(rawDesc: string, effects: Array<{ minUnits: number; ma
   // Longer phrases first; use placeholders to prevent double-wrapping
   const statKeywords: Array<[RegExp, string]> = [
     [/\b(max(?:imum)?\s+Health)\b/gi, '#2dd4bf'],
+    [/\b(Critical Strike Chance)\b/gi, '#f87171'],
+    [/\b(Critical Strike Damage)\b/gi, '#f87171'],
+    [/\b(Critical Strike)\b/gi, '#f87171'],
+    [/\b(Damage Reduction)\b/gi, '#eab308'],
     [/\b(Magic Resist)\b/gi, '#818cf8'],
     [/\b(Attack Damage)\b/gi, '#fb923c'],
     [/\b(Ability Power)\b/gi, '#c084fc'],
@@ -251,6 +271,8 @@ function resolveTraitDesc(rawDesc: string, effects: Array<{ minUnits: number; ma
     [/\b(Armor)\b/gi, '#eab308'],
     [/\b(Shield)\b/gi, '#fbbf24'],
     [/\b(Mana)\b/g, '#60a5fa'],
+    [/\b(AD)\b/g, '#fb923c'],
+    [/\b(AP)\b/g, '#c084fc'],
   ];
   const placeholders: string[] = [];
   for (const [re, color] of statKeywords) {
