@@ -256,7 +256,7 @@ function showItemDetails(itemId) {
     h += '<div style="margin-top:1rem"><span style="font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:.04em">Recipe</span>';
     h += '<div style="display:flex;gap:.5rem;margin-top:.35rem">';
     item.from.forEach((compId) => {
-      const comp = DATA.items?.find((i) => i.id === compId);
+      const comp = DATA.items?.find((i) => i.uniqueId === compId);
       if (comp) {
         h += '<div style="display:flex;align-items:center;gap:.3rem;padding:.25rem .5rem;border-radius:8px;background:var(--surface-strong);border:1px solid var(--border)">';
         if (comp.icon) h += '<img src="' + comp.icon + '" alt="" style="width:24px;height:24px;border-radius:4px" />';

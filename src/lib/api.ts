@@ -188,23 +188,26 @@ function parseSetItems(setItemRefs: string[], allItems: any[]): TFTItem[] {
     if (api.includes('Grant') || api.includes('Assist_')) continue;
 
     const composition = raw.composition ?? [];
+    const desc = raw.desc ?? '';
     const isComponent = COMPONENT_APIS.has(api);
     const isCompleted = !isComponent && composition.length === 2;
     const isEmblem = name.includes('Emblem');
     const isArtifact = api.includes('Artifact');
-    const isRadiant = name.includes('Radiant') || api.includes('Radiant');
-    const isSupport = api.includes('Support') || name.includes('Support');
+    // Use description tag as authoritative for support (some support items have 'Radiant' in apiName)
+    const isSupport = desc.includes('[Support item]');
+    // Only classify as radiant if the name actually starts with "Radiant" (not just apiName pattern)
+    const isRadiant = name.startsWith('Radiant ');
 
     results.push({
       id: raw.id ?? null,
       name,
-      desc: raw.desc ?? '',
+      desc,
       icon: assetUrl(raw.icon),
       category: isComponent ? 'component'
+        : isSupport ? 'support'
         : isEmblem ? 'emblem'
         : isArtifact ? 'artifact'
         : isRadiant ? 'radiant'
-        : isSupport ? 'support'
         : isCompleted ? 'completed'
         : 'other',
       from: composition,
