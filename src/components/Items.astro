@@ -8,9 +8,23 @@ interface Props {
 
 const { items } = Astro.props;
 
-const components = items.filter(i => i.isComponent);
-const completed = items.filter(i => i.isCompleted && !i.isRadiant);
-const radiant = items.filter(i => i.isRadiant);
+const components = items.filter(i => i.category === 'component');
+const completed = items.filter(i => i.category === 'completed');
+const emblems = items.filter(i => i.category === 'emblem');
+const artifacts = items.filter(i => i.category === 'artifact');
+const radiant = items.filter(i => i.category === 'radiant');
+const support = items.filter(i => i.category === 'support');
+
+const categories = [
+  { key: 'component', label: 'Components', icon: SVG_ICONS.grid, items: components },
+  { key: 'completed', label: 'Completed', icon: SVG_ICONS.sword, items: completed },
+  { key: 'emblem', label: 'Emblems', icon: SVG_ICONS.crown, items: emblems },
+  { key: 'artifact', label: 'Artifacts', icon: SVG_ICONS.gem, items: artifacts },
+  { key: 'radiant', label: 'Radiant', icon: SVG_ICONS.sparkle, items: radiant },
+  { key: 'support', label: 'Support', icon: SVG_ICONS.shield, items: support },
+].filter(c => c.items.length > 0);
+
+const totalShown = categories.reduce((s, c) => s + c.items.length, 0);
 ---
 
 <section id="items" class="content" style="display:none">
@@ -23,52 +37,28 @@ const radiant = items.filter(i => i.isRadiant);
     </div>
 
     <div class="item-category-filters" id="itemCategoryFilters">
-        <button class="item-cat-filter active" data-cat="all" type="button">All <span class="count">{items.length}</span></button>
-        <button class="item-cat-filter" data-cat="component" type="button"><Fragment set:html={SVG_ICONS.grid} /> Components <span class="count">{components.length}</span></button>
-        <button class="item-cat-filter" data-cat="completed" type="button"><Fragment set:html={SVG_ICONS.sword} /> Completed <span class="count">{completed.length}</span></button>
-        {radiant.length > 0 && (
-            <button class="item-cat-filter" data-cat="radiant" type="button"><Fragment set:html={SVG_ICONS.sparkle} /> Radiant <span class="count">{radiant.length}</span></button>
-        )}
+        <button class="item-cat-filter active" data-cat="all" type="button">All <span class="count">{totalShown}</span></button>
+        {categories.map(cat => (
+            <button class="item-cat-filter" data-cat={cat.key} type="button">
+                <Fragment set:html={cat.icon} /> {cat.label} <span class="count">{cat.items.length}</span>
+            </button>
+        ))}
     </div>
 
-    <!-- Components Section -->
-    <div class="item-section" data-item-cat="component">
-        <h3 class="item-section-title">Components</h3>
-        <div class="items-grid">
-            {components.map(item => (
-                <div class="item-card" data-item-id={item.uniqueId} data-item-name={item.name.toLowerCase()} data-item-type="component">
-                    <img src={item.icon} alt={item.name} loading="lazy" class="item-icon" />
-                    <span class="item-name">{item.name}</span>
-                </div>
-            ))}
-        </div>
-    </div>
-
-    <!-- Completed Items Section -->
-    <div class="item-section" data-item-cat="completed">
-        <h3 class="item-section-title">Completed Items</h3>
-        <div class="items-grid">
-            {completed.map(item => (
-                <div class="item-card" data-item-id={item.uniqueId} data-item-name={item.name.toLowerCase()} data-item-type="completed">
-                    <img src={item.icon} alt={item.name} loading="lazy" class="item-icon" />
-                    <span class="item-name">{item.name}</span>
-                </div>
-            ))}
-        </div>
-    </div>
-
-    <!-- Radiant Items Section -->
-    {radiant.length > 0 && (
-        <div class="item-section" data-item-cat="radiant">
-            <h3 class="item-section-title">Radiant Items</h3>
+    {categories.map(cat => (
+        <div class="item-section" data-item-cat={cat.key}>
+            <h3 class="item-section-title">{cat.label}</h3>
             <div class="items-grid">
-                {radiant.map(item => (
-                    <div class="item-card item-radiant" data-item-id={item.uniqueId} data-item-name={item.name.toLowerCase()} data-item-type="radiant">
-                        <img src={item.icon} alt={item.name} loading="lazy" class="item-icon" />
+                {cat.items.map(item => (
+                    <div class={`item-card${cat.key === 'radiant' ? ' item-radiant' : ''}${cat.key === 'artifact' ? ' item-artifact' : ''}`}
+                         data-item-id={item.uniqueId}
+                         data-item-name={item.name.toLowerCase()}
+                         data-item-type={cat.key}>
+                        {item.icon && <img src={item.icon} alt={item.name} loading="lazy" class="item-icon" />}
                         <span class="item-name">{item.name}</span>
                     </div>
                 ))}
             </div>
         </div>
-    )}
+    ))}
 </section>

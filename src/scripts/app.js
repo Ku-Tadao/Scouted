@@ -231,7 +231,8 @@ function showItemDetails(itemId) {
   let h = '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">';
   if (item.icon) h += '<img src="' + item.icon + '" alt="" style="width:64px;height:64px;border-radius:10px;border:2px solid var(--border)" />';
   h += '<div><h3 style="margin:0;font-family:Exo 2,system-ui;text-transform:uppercase;letter-spacing:.03em">' + esc(item.name) + '</h3>';
-  const type = item.isComponent ? 'Component' : item.isRadiant ? 'Radiant' : item.isCompleted ? 'Completed' : 'Other';
+  const catLabels = { component: 'Component', completed: 'Completed', emblem: 'Emblem', artifact: 'Artifact', radiant: 'Radiant', support: 'Support', other: 'Item' };
+  const type = catLabels[item.category] || 'Item';
   h += '<span style="font-size:.75rem;color:var(--muted);text-transform:uppercase;font-weight:600">' + type + '</span>';
   h += '</div></div>';
 

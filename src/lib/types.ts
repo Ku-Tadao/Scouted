@@ -30,16 +30,12 @@ export interface TFTChampion {
 }
 
 export interface TFTItem {
-  id: number;
+  id: number | null;
   name: string;
   desc: string;
   icon: string;
-  isComponent: boolean;
-  isCompleted: boolean;
-  isRadiant: boolean;
-  isArtifact: boolean;
-  isSupport: boolean;
-  from?: number[];
+  category: 'component' | 'completed' | 'emblem' | 'artifact' | 'radiant' | 'support' | 'other';
+  from?: string[];
   effects: Record<string, number>;
   uniqueId: string;
 }
@@ -49,10 +45,10 @@ export interface TFTTrait {
   name: string;
   desc: string;
   icon: string;
-  type: 'origin' | 'class';
+  type: 'origin' | 'class' | 'unique' | 'teamup';
   style: number;
   effects: TraitEffect[];
-  champions: string[];
+  champions: { name: string; icon: string }[];
 }
 
 export interface TraitEffect {

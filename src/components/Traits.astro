@@ -7,6 +7,13 @@ interface Props {
 }
 
 const { traits } = Astro.props;
+
+const typeLabels: Record<string, string> = {
+  origin: 'Region',
+  class: 'Class',
+  unique: 'Unique',
+  teamup: 'Team-Up',
+};
 ---
 
 <section id="traits" class="content" style="display:none">
@@ -25,7 +32,7 @@ const { traits } = Astro.props;
                     {trait.icon && <img src={trait.icon} alt={trait.name} loading="lazy" class="trait-icon" />}
                     <div class="trait-card-title">
                         <h4 class="trait-name">{trait.name}</h4>
-                        <span class="trait-type-badge">{trait.type}</span>
+                        <span class={`trait-type-badge trait-type-${trait.type}`}>{typeLabels[trait.type] ?? trait.type}</span>
                     </div>
                 </div>
                 <div class="trait-breakpoints">
@@ -35,8 +42,11 @@ const { traits } = Astro.props;
                 </div>
                 {trait.champions.length > 0 && (
                     <div class="trait-champ-list">
-                        {trait.champions.slice(0, 6).map(name => (
-                            <span class="trait-champ-tag">{name}</span>
+                        {trait.champions.slice(0, 6).map(ch => (
+                            <div class="trait-champ-entry" title={ch.name}>
+                                {ch.icon && <img src={ch.icon} alt={ch.name} loading="lazy" class="trait-champ-portrait" />}
+                                <span class="trait-champ-name">{ch.name}</span>
+                            </div>
                         ))}
                         {trait.champions.length > 6 && (
                             <span class="trait-champ-more">+{trait.champions.length - 6}</span>

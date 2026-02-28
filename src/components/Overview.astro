@@ -11,8 +11,8 @@ interface Props {
 const { champions, traits, items } = Astro.props;
 
 const costCounts = [1, 2, 3, 4, 5].map(c => champions.filter(ch => ch.cost === c).length);
-const componentItems = items.filter(i => i.isComponent).length;
-const completedItems = items.filter(i => i.isCompleted).length;
+const componentItems = items.filter(i => i.category === 'component').length;
+const completedItems = items.filter(i => i.category === 'completed').length;
 
 // Pick random champion portraits for the strip
 const shuffled = [...champions].sort(() => Math.random() - 0.5);
