@@ -456,6 +456,7 @@ function resolveAugments(augRefs: string[], allItems: any[]): TFTAugment[] {
         desc: raw.desc ?? '',
         icon: assetUrl(raw.icon),
         tier,
+        effects: raw.effects ?? {},
         associatedTraits: raw.associatedTraits ?? [],
       } as TFTAugment;
     })

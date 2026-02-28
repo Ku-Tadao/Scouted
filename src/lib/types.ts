@@ -71,6 +71,7 @@ export interface TFTAugment {
   desc: string;
   icon: string;
   tier: 1 | 2 | 3;
+  effects: Record<string, number>;
   associatedTraits?: string[];
 }
 

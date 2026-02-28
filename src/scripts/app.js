@@ -25,6 +25,47 @@ const esc = (v) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+// ── Stat Keyword Colorization ──
+// Colorize stat keywords in descriptions (same colors as trait descriptions).
+// Uses placeholder approach to prevent double-wrapping.
+function colorizeStats(text) {
+  var statKeywords = [
+    [/\b(max(?:imum)?\s+Health)\b/gi, '#2dd4bf'],
+    [/\b(Critical Strike Chance)\b/gi, '#f87171'],
+    [/\b(Critical Strike Damage)\b/gi, '#f87171'],
+    [/\b(Critical Strike)\b/gi, '#f87171'],
+    [/\b(Damage Reduction)\b/gi, '#eab308'],
+    [/\b(Magic Resist)\b/gi, '#818cf8'],
+    [/\b(Attack Damage)\b/gi, '#fb923c'],
+    [/\b(Ability Power)\b/gi, '#c084fc'],
+    [/\b(Attack Speed)\b/gi, '#a3e635'],
+    [/\b(Mana Regen)\b/gi, '#60a5fa'],
+    [/\b(Crit Chance)\b/gi, '#f87171'],
+    [/\b(Crit Damage)\b/gi, '#f87171'],
+    [/\b(Magic Damage)\b/gi, '#a78bfa'],
+    [/\b(Damage Amp)\b/gi, '#a78bfa'],
+    [/\b(Omnivamp)\b/gi, '#fb7185'],
+    [/\b(Durability)\b/gi, '#eab308'],
+    [/\b(Health)\b/gi, '#2dd4bf'],
+    [/\b(Armor)\b/gi, '#eab308'],
+    [/\b(Shield)\b/gi, '#fbbf24'],
+    [/\b(Mana)\b/g, '#60a5fa'],
+    [/\b(AD)\b/g, '#fb923c'],
+    [/\b(AP)\b/g, '#c084fc'],
+  ];
+  var placeholders = [];
+  for (var i = 0; i < statKeywords.length; i++) {
+    var re = statKeywords[i][0], color = statKeywords[i][1];
+    text = text.replace(re, function(m) {
+      var idx = placeholders.length;
+      placeholders.push('<span style="color:' + color + '">' + m + '</span>');
+      return '\x00STAT' + idx + '\x00';
+    });
+  }
+  text = text.replace(/\x00STAT(\d+)\x00/g, function(_m, idx) { return placeholders[Number(idx)]; });
+  return text;
+}
+
 // ── Theme ──
 function setTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
@@ -367,6 +408,8 @@ function showChampionDetails(champId) {
       desc = desc.replace(/<(?!\/?span\b)[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s{2,}/g, ' ').trim();
       // Clean up orphaned empty parens and double spaces from removed tokens
       desc = desc.replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
+      // Colorize stat keywords (Health, Armor, Mana, etc.)
+      desc = colorizeStats(desc);
       h += '<p class="cd-ability-desc">' + desc + '</p>';
     }
     h += '</div></div>';
@@ -409,8 +452,8 @@ function showItemDetails(itemId) {
   h += '</div></div>';
 
   if (item.desc) {
-    let desc = item.desc.replace(/<[^>]*>/g, '').replace(/@[^@]+@/g, '?');
-    h += '<p style="color:var(--muted);font-size:.9rem;line-height:1.6">' + desc + '</p>';
+    var desc = resolveDescWithEffects(item.desc, item.effects);
+    h += '<p class="cd-ability-desc" style="color:var(--muted);font-size:.9rem;line-height:1.6">' + desc + '</p>';
   }
 
   // Effects
@@ -445,6 +488,148 @@ function showItemDetails(itemId) {
 
 function closeItemModal() {
   const m = document.getElementById('itemModal');
+  m.classList.add('hidden');
+  m.setAttribute('aria-hidden', 'true');
+}
+
+// ── Augment Detail Modal ──
+function findAugment(id) {
+  return DATA.augments?.find((a) => a.id === id);
+}
+
+/**
+ * Resolve a description string using a flat effects object.
+ * Shared by items and augments (both have { key: number } effects).
+ */
+function resolveDescWithEffects(rawDesc, effects) {
+  let desc = rawDesc;
+  const ef = effects || {};
+  var efKeysAll = Object.keys(ef);
+  var efKeysLower = {};
+  efKeysAll.forEach(function(k) { efKeysLower[k.toLowerCase()] = k; });
+
+  // Resolve @Token@ and @Token*N@
+  desc = desc.replace(/@([^@]+)@/g, function(_m, token) {
+    if (token.startsWith('TFTUnitProperty')) return '';
+    var multMatch = token.match(/^(.+?)\*(\d+(?:\.\d+)?)$/);
+    var varName = multMatch ? multMatch[1] : token;
+    var mult = multMatch ? parseFloat(multMatch[2]) : 1;
+    var val = ef[varName];
+    if (val == null && efKeysLower[varName.toLowerCase()])
+      val = ef[efKeysLower[varName.toLowerCase()]];
+    if (val == null) {
+      var stripped = varName.replace(/^(Modified|Total|Reduced|Bonus|TOOLTIP)/i, '');
+      if (stripped && stripped !== varName) {
+        if (ef[stripped] != null) val = ef[stripped];
+        else if (efKeysLower[stripped.toLowerCase()]) val = ef[efKeysLower[stripped.toLowerCase()]];
+      }
+    }
+    if (val == null) {
+      var search = varName.toLowerCase();
+      for (var fi = 0; fi < efKeysAll.length; fi++) {
+        var ek = efKeysAll[fi].toLowerCase();
+        if (ek.endsWith(search) || search.endsWith(ek)) { val = ef[efKeysAll[fi]]; break; }
+      }
+    }
+    if (val == null) {
+      var search2 = varName.toLowerCase();
+      var bestMatch = null, bestLen = 0;
+      for (var si = 0; si < efKeysAll.length; si++) {
+        var ekl = efKeysAll[si].toLowerCase();
+        if (search2.includes(ekl) && ekl.length > bestLen) { bestMatch = efKeysAll[si]; bestLen = ekl.length; }
+        else if (ekl.includes(search2) && search2.length > bestLen) { bestMatch = efKeysAll[si]; bestLen = search2.length; }
+      }
+      if (bestMatch) val = ef[bestMatch];
+    }
+    if (val == null) return '?';
+    var n = val * mult;
+    return n % 1 === 0 ? String(n) : n.toFixed(1).replace(/\.0$/, '');
+  });
+
+  // Resolve {{keyword}} tags
+  var keywordDefs = {
+    'TFT_Keyword_Chill': '<span class="kw-tag">Chill</span>: Reduce attack speed by 30%',
+    'TFT_Keyword_Shred': '<span class="kw-tag">Shred</span>: Reduce Magic Resist by 40% for 5 seconds',
+    'TFT_Keyword_Wound': '<span class="kw-tag">Wound</span>: Reduce healing received by 33% for 5 seconds',
+    'TFT_Keyword_Burn': '<span class="kw-tag">Burn</span>: Deal 2% max Health true damage over 5 seconds. Reduce healing by 33%',
+    'TFT_Keyword_Sunder': '<span class="kw-tag">Sunder</span>: Reduce Armor by 40% for 5 seconds',
+    'TFT13_ChemBaronOnlyItem': '<span class="kw-tag">Chem-Baron Only</span>',
+  };
+  desc = desc.replace(/\{\{([^}]+)\}\}/g, function(_m, kw) {
+    return keywordDefs[kw] || '';
+  });
+
+  // Replace %i:icon% tokens
+  var statIcons = {
+    scaleAD: { label: 'AD', color: '#fb923c', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/></svg>' },
+    scaleAP: { label: 'AP', color: '#c084fc', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>' },
+    scaleAS: { label: 'AS', color: '#a3e635', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' },
+    scaleArmor: { label: 'Armor', color: '#eab308', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>' },
+    scaleMR: { label: 'MR', color: '#818cf8', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8l1.5 3H15l-1.5 2L15 16h-2l-1-2-1 2H9l1.5-3L9 11h1.5z"/></svg>' },
+    scaleHealth: { label: 'HP', color: '#2dd4bf', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>' },
+    scaleCrit: { label: 'Crit', color: '#f87171', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>' },
+    scaleCritMult: { label: 'Crit Dmg', color: '#f87171', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>' },
+    scaleDA: { label: 'Dmg Amp', color: '#a78bfa', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>' },
+    scaleDR: { label: 'DR', color: '#eab308', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>' },
+    scaleSV: { label: 'Omnivamp', color: '#fb7185', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>' },
+    scaleSouls: { label: 'Souls', color: '#67e8f9', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="10" r="7"/><path d="M8 17c0 2.2 1.8 4 4 4s4-1.8 4-4"/></svg>' },
+    scaleSerpents: { label: 'Serpents', color: '#34d399', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>' },
+    TFTBaseAD: { label: 'AD', color: '#fb923c', svg: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" y1="19" x2="19" y2="13"/><line x1="16" y1="16" x2="20" y2="20"/><line x1="19" y1="21" x2="21" y2="19"/></svg>' },
+  };
+  desc = desc.replace(/%i:([^%]+)%/g, function(_m, icon) {
+    var info = statIcons[icon];
+    if (!info) return '';
+    return '<span class="stat-icon" style="color:' + info.color + '">' + info.svg + '<span>' + info.label + '</span></span>';
+  });
+
+  // Strip HTML tags (keep injected spans), clean whitespace
+  desc = desc.replace(/<(?!\/?span\b)[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  desc = desc.replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim();
+  desc = colorizeStats(desc);
+  return desc;
+}
+
+function showAugmentDetails(augId) {
+  const aug = findAugment(augId);
+  if (!aug) return;
+
+  const modal = document.getElementById('augModal');
+  const det = document.getElementById('modalAugDetails');
+  det.innerHTML = '';
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden', 'false');
+
+  const tierNames = { 1: 'Silver', 2: 'Gold', 3: 'Prismatic' };
+  const tierColors = { 1: '#94a3b8', 2: '#f59e0b', 3: '#c084fc' };
+  const tierBg = { 1: 'rgba(148,163,184,0.12)', 2: 'rgba(245,158,11,0.12)', 3: 'rgba(192,132,252,0.12)' };
+  const tc = tierColors[aug.tier] || '#f59e0b';
+  const tb = tierBg[aug.tier] || 'rgba(245,158,11,0.12)';
+
+  let h = '';
+  h += '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">';
+  if (aug.icon) h += '<img src="' + aug.icon + '" alt="" style="width:64px;height:64px;border-radius:10px;border:2px solid ' + tc + '" />';
+  h += '<div><h3 style="margin:0;font-family:Exo 2,system-ui;text-transform:uppercase;letter-spacing:.03em">' + esc(aug.name) + '</h3>';
+  h += '<span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:.12rem .4rem;border-radius:4px;background:' + tb + ';color:' + tc + '">' + (tierNames[aug.tier] || 'Gold') + '</span>';
+  if (aug.associatedTraits && aug.associatedTraits.length) {
+    h += '<div style="display:flex;gap:.25rem;flex-wrap:wrap;margin-top:.4rem">';
+    aug.associatedTraits.forEach(function(t) {
+      var traitName = t.replace(/^Set\d+_/i, '').replace(/^TFT\d*_/i, '');
+      h += '<span style="font-size:.6rem;padding:.1rem .35rem;border-radius:4px;background:var(--surface-strong);color:var(--muted);font-weight:600;font-family:Exo 2,system-ui;text-transform:uppercase;letter-spacing:.03em;border:1px solid var(--border)">' + esc(traitName) + '</span>';
+    });
+    h += '</div>';
+  }
+  h += '</div></div>';
+
+  if (aug.desc) {
+    var desc = resolveDescWithEffects(aug.desc, aug.effects);
+    h += '<p class="cd-ability-desc" style="color:var(--muted);font-size:.9rem;line-height:1.6">' + desc + '</p>';
+  }
+
+  det.innerHTML = h;
+}
+
+function closeAugModal() {
+  const m = document.getElementById('augModal');
   m.classList.add('hidden');
   m.setAttribute('aria-hidden', 'true');
 }
@@ -561,6 +746,11 @@ function bind() {
     b.addEventListener('click', () => filterAugmentTier(b.dataset.tier))
   );
 
+  // Augment card clicks
+  document.querySelectorAll('.augment-card').forEach((c) =>
+    c.addEventListener('click', () => { if (c.dataset.augId) showAugmentDetails(c.dataset.augId); })
+  );
+
   // Overview search
   const oi = document.getElementById('ovSearch');
   if (oi) oi.addEventListener('keydown', (e) => { if (e.key === 'Enter') overviewSearch(); });
@@ -578,13 +768,18 @@ function bind() {
   const itemModal = document.getElementById('itemModal');
   if (itemModal) itemModal.addEventListener('click', (e) => { if (e.target === itemModal) closeItemModal(); });
 
+  const cab = document.getElementById('closeAugModalBtn');
+  if (cab) cab.addEventListener('click', closeAugModal);
+  const augModal = document.getElementById('augModal');
+  if (augModal) augModal.addEventListener('click', (e) => { if (e.target === augModal) closeAugModal(); });
+
   const pmc = document.getElementById('playerModalClose');
   if (pmc) pmc.addEventListener('click', closePlayerModal);
   const pm = document.getElementById('playerModal');
   if (pm) pm.addEventListener('click', (e) => { if (e.target === pm) closePlayerModal(); });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { closeChampModal(); closeItemModal(); closePlayerModal(); }
+    if (e.key === 'Escape') { closeChampModal(); closeItemModal(); closeAugModal(); closePlayerModal(); }
   });
 
   // Theme toggle
@@ -641,4 +836,4 @@ document.addEventListener('DOMContentLoaded', () => {
   showSection('overview');
 });
 
-window.Scouted = { showChampionDetails, closeChampModal, showItemDetails, closeItemModal, openPlayerModal, closePlayerModal, overviewSearch };
+window.Scouted = { showChampionDetails, closeChampModal, showItemDetails, closeItemModal, showAugmentDetails, closeAugModal, openPlayerModal, closePlayerModal, overviewSearch };
