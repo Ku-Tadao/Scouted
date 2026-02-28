@@ -225,6 +225,37 @@ function resolveTraitDesc(rawDesc: string, effects: Array<{ minUnits: number; ma
     }).join('<span style="color:var(--muted)">/</span>');
   });
 
+  // 6. Colorize stat keywords (League-style tooltip colors)
+  // Longer phrases first; use placeholders to prevent double-wrapping
+  const statKeywords: Array<[RegExp, string]> = [
+    [/\b(max(?:imum)?\s+Health)\b/gi, '#2dd4bf'],
+    [/\b(Magic Resist)\b/gi, '#818cf8'],
+    [/\b(Attack Damage)\b/gi, '#fb923c'],
+    [/\b(Ability Power)\b/gi, '#c084fc'],
+    [/\b(Attack Speed)\b/gi, '#a3e635'],
+    [/\b(Mana Regen)\b/gi, '#60a5fa'],
+    [/\b(Crit Chance)\b/gi, '#f87171'],
+    [/\b(Crit Damage)\b/gi, '#f87171'],
+    [/\b(Magic Damage)\b/gi, '#a78bfa'],
+    [/\b(Damage Amp)\b/gi, '#a78bfa'],
+    [/\b(Omnivamp)\b/gi, '#fb7185'],
+    [/\b(Durability)\b/gi, '#eab308'],
+    [/\b(Health)\b/gi, '#2dd4bf'],
+    [/\b(Armor)\b/gi, '#eab308'],
+    [/\b(Shield)\b/gi, '#fbbf24'],
+    [/\b(Mana)\b/g, '#60a5fa'],
+  ];
+  const placeholders: string[] = [];
+  for (const [re, color] of statKeywords) {
+    summary = summary.replace(re, (m) => {
+      const idx = placeholders.length;
+      placeholders.push(`<span style="color:${color}">${m}</span>`);
+      return `\x00STAT${idx}\x00`;
+    });
+  }
+  // Restore placeholders
+  summary = summary.replace(/\x00STAT(\d+)\x00/g, (_m, idx) => placeholders[Number(idx)]);
+
   return { summary, details: detailRows };
 }
 
