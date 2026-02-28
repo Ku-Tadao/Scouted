@@ -1,0 +1,66 @@
+---
+import { SVG_ICONS, getCostIcon } from '@/lib/icons';
+import type { TFTChampion } from '@/lib/types';
+
+interface Props {
+  champions: TFTChampion[];
+}
+
+const { champions } = Astro.props;
+
+const costs = [1, 2, 3, 4, 5] as const;
+const costLabels: Record<number, string> = { 1: '1-Cost', 2: '2-Cost', 3: '3-Cost', 4: '4-Cost', 5: '5-Cost' };
+
+const grouped = Object.fromEntries(
+  costs.map(c => [c, champions.filter(ch => ch.cost === c).sort((a, b) => a.name.localeCompare(b.name))])
+);
+---
+
+<section id="champions" class="content" style="display:none">
+    <div class="section-header">
+        <h2>Champions</h2>
+        <div class="search-filter">
+            <span class="search-icon"><Fragment set:html={SVG_ICONS.search} /></span>
+            <input type="text" id="champSearch" placeholder="Search champions..." />
+        </div>
+    </div>
+
+    <div class="cost-filters" id="costFilters">
+        <button class="cost-filter active" data-cost="all" type="button">All <span class="count">{champions.length}</span></button>
+        {costs.map(c => (
+            <button class={`cost-filter cost-${c}-btn`} data-cost={String(c)} type="button">
+                <Fragment set:html={getCostIcon(c)} /> {costLabels[c]} <span class="count">{grouped[c].length}</span>
+            </button>
+        ))}
+    </div>
+
+    <div class="champs-grid-container">
+        {costs.map(c => (
+            <div class={`champ-cost-group cost-group-${c}`} data-cost-group={String(c)}>
+                <div class={`cost-group-header cost-${c}-header`}>
+                    <Fragment set:html={getCostIcon(c)} />
+                    <span>{costLabels[c]}</span>
+                    <span class="col-count">{grouped[c].length}</span>
+                </div>
+                <div class="champ-grid">
+                    {grouped[c].map(ch => (
+                        <div class="champ-card" data-champ-id={ch.championId} data-champ-name={ch.name.toLowerCase()} data-champ-cost={String(c)}>
+                            <div class={`champ-portrait-wrap cost-${c}`}>
+                                <img src={ch.tileIcon || ch.icon} alt={ch.name} loading="lazy" class="champ-portrait" />
+                            </div>
+                            <div class="champ-card-info">
+                                <div class="champ-name">{ch.name}</div>
+                                <div class="champ-traits-row">
+                                    {ch.traits.slice(0, 3).map(t => (
+                                        <span class="champ-trait-tag">{t}</span>
+                                    ))}
+                                </div>
+                            </div>
+                            <div class={`champ-cost-badge cost-${c}-badge`}>{c}</div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        ))}
+    </div>
+</section>

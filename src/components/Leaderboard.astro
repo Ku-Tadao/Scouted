@@ -1,0 +1,61 @@
+---
+import { SVG_ICONS } from '@/lib/icons';
+---
+
+<section id="leaderboard" class="content" style="display:none">
+    <div class="section-header">
+        <h2>Leaderboard</h2>
+        <div class="lb-controls">
+            <div class="region-selector">
+                <button class="region-btn active" data-region="na1">NA</button>
+                <button class="region-btn" data-region="euw1">EUW</button>
+                <button class="region-btn" data-region="eun1">EUNE</button>
+                <button class="region-btn" data-region="kr">KR</button>
+                <button class="region-btn" data-region="jp1">JP</button>
+                <button class="region-btn" data-region="oc1">OCE</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="lb-tier-tabs">
+        <button class="lb-tier-tab active" data-tier="challenger" type="button">
+            <Fragment set:html={SVG_ICONS.crown} /> Challenger
+        </button>
+        <button class="lb-tier-tab" data-tier="grandmaster" type="button">
+            <Fragment set:html={SVG_ICONS.trophy} /> Grandmaster
+        </button>
+        <button class="lb-tier-tab" data-tier="master" type="button">
+            <Fragment set:html={SVG_ICONS.star} /> Master
+        </button>
+    </div>
+
+    <div class="lb-info-row">
+        <span class="lb-status" id="lbStatus">Select a region to load the leaderboard. Requires Riot API key.</span>
+    </div>
+
+    <div class="lb-table-wrap">
+        <table class="lb-table" id="lbTable">
+            <thead>
+                <tr>
+                    <th class="lb-rank">#</th>
+                    <th class="lb-player">Summoner</th>
+                    <th>LP</th>
+                    <th>Wins</th>
+                    <th>Losses</th>
+                    <th>Win Rate</th>
+                </tr>
+            </thead>
+            <tbody id="lbBody">
+                <tr class="lb-placeholder">
+                    <td colspan="6">
+                        <div class="lb-empty">
+                            <Fragment set:html={SVG_ICONS.leaderboard} />
+                            <p>Leaderboard data will be available once the Riot API is connected.</p>
+                            <p class="muted" style="font-size:.8rem">Configure your API key to fetch live ranked data.</p>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>

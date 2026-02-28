@@ -1,0 +1,139 @@
+---
+import '@/styles/global.css';
+import { SVG_ICONS } from '@/lib/icons';
+
+interface Props {
+  title?: string;
+  description?: string;
+  buildDate?: string;
+  patch?: string;
+  set?: string;
+}
+
+const {
+  title = 'Scouted — TFT Data Hub',
+  description = 'Scouted: Explore TFT champions, items, traits, augments, comps, and leaderboards. Your Teamfight Tactics data companion.',
+  buildDate = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }),
+  patch = 'unknown',
+  set = 'Set 14',
+} = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>{title}</title>
+    <meta name="description" content={description}>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script is:inline>if(location.hash)history.replaceState(null,'',location.pathname+location.search);if('scrollRestoration'in history)history.scrollRestoration='manual';</script>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="header-bar">
+                <div class="header-brand">
+                    <h1>Scouted</h1>
+                    <span class="version-pill">{set}</span>
+                    <span class="patch-pill">Patch {patch}</span>
+                </div>
+                <div class="header-actions">
+                    <button id="themeToggle" class="btn btn-ghost btn-sm" type="button">Dark Mode</button>
+                    <div class="header-search" id="headerSearch">
+                        <input type="text" class="header-search-input" id="headerSearchInput" placeholder="Summoner name..." />
+                        <button type="button" class="header-search-btn" id="headerSearchBtn">
+                            <Fragment set:html={SVG_ICONS.search} /> Search
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <nav>
+        <div class="container nav-wrap">
+            <div class="nav-inner">
+                <button class="nav-link active" data-section="overview" type="button">Overview</button>
+                <button class="nav-link" data-section="champions" type="button">Champions</button>
+                <button class="nav-link" data-section="items" type="button">Items</button>
+                <button class="nav-link" data-section="traits" type="button">Traits</button>
+                <button class="nav-link" data-section="augments" type="button">Augments</button>
+                <button class="nav-link" data-section="leaderboard" type="button">Leaderboard</button>
+            </div>
+            <div class="product-switcher">
+                <button class="product-switcher-btn" type="button" id="productSwitcherBtn">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor" opacity=".5"/><rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor" opacity=".5"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" opacity=".3"/></svg>
+                    Apps
+                </button>
+                <div class="product-switcher-dropdown hidden" id="productSwitcherDropdown">
+                    <div class="product-dropdown-label">Switch App</div>
+                    <a href="https://ku-tadao.github.io/LockedIn/" class="product-card">
+                        <img class="product-card-img" src="https://cdn.akamai.steamstatic.com/steam/apps/1422450/header.jpg" alt="Deadlock" loading="lazy" />
+                        <div class="product-card-info">
+                            <strong>LockedIn</strong>
+                            <span>Deadlock Data Hub</span>
+                        </div>
+                    </a>
+                    <a href="https://ku-tadao.github.io/OverWatched/" class="product-card">
+                        <img class="product-card-img" src="https://cdn.akamai.steamstatic.com/steam/apps/2357570/header.jpg" alt="Overwatch 2" loading="lazy" />
+                        <div class="product-card-info">
+                            <strong>OverWatched</strong>
+                            <span>Overwatch Data Hub</span>
+                        </div>
+                    </a>
+                    <a href="https://ku-tadao.github.io/Scouted/" class="product-card active">
+                        <img class="product-card-img" src="https://ddragon.leagueoflegends.com/cdn/img/tft-share.jpg" alt="TFT" loading="lazy" />
+                        <div class="product-card-info">
+                            <strong>Scouted</strong>
+                            <span>TFT Data Hub</span>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container">
+        <slot />
+    </main>
+
+    <!-- Champion Detail Modal -->
+    <div id="champModal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="modal-content" role="document">
+            <div id="modalChampDetails"></div>
+            <button type="button" id="closeModalBtn" class="btn btn-brand" style="margin-top:1rem">Close</button>
+        </div>
+    </div>
+
+    <!-- Item Detail Modal -->
+    <div id="itemModal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true">
+        <div class="modal-content modal-sm" role="document">
+            <div id="modalItemDetails"></div>
+            <button type="button" id="closeItemModalBtn" class="btn btn-brand" style="margin-top:1rem">Close</button>
+        </div>
+    </div>
+
+    <!-- Player Search Modal -->
+    <div id="playerModal" class="player-modal hidden">
+        <div class="player-modal-content">
+            <div class="pm-search-row">
+                <input type="text" id="playerInput" placeholder="Search by Riot ID (Name#TAG)..." />
+                <button type="button" id="playerSearchBtn" class="btn btn-brand">Search</button>
+                <button type="button" id="playerModalClose" class="btn btn-ghost">Close</button>
+            </div>
+            <div id="playerSearchResults"></div>
+            <div id="playerProfile" class="hidden"></div>
+        </div>
+    </div>
+
+    <footer>
+        <div class="container">
+            <p>Scouted &middot; Built {buildDate} &middot; Data: <a href="https://developer.riotgames.com" target="_blank" rel="noopener noreferrer" class="stealth-link">Riot Games API</a> + <a href="https://communitydragon.org" target="_blank" rel="noopener noreferrer" class="stealth-link">CommunityDragon</a></p>
+            <p class="footer-disclaimer">Scouted is not endorsed by Riot Games and does not reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties.</p>
+        </div>
+    </footer>
+</body>
+</html>

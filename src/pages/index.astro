@@ -1,0 +1,38 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import Overview from '@/components/Overview.astro';
+import Champions from '@/components/Champions.astro';
+import Items from '@/components/Items.astro';
+import Traits from '@/components/Traits.astro';
+import Augments from '@/components/Augments.astro';
+import Leaderboard from '@/components/Leaderboard.astro';
+import { fetchAllData } from '@/lib/api';
+
+const data = await fetchAllData();
+
+const buildDate = new Date(data.buildInfo.generatedAt).toLocaleString('en-US', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
+
+const clientPayload = JSON.stringify({
+  champions: data.champions,
+  items: data.items,
+  traits: data.traits,
+  augments: data.augments,
+  buildInfo: data.buildInfo,
+});
+---
+
+<Layout buildDate={buildDate} patch={data.buildInfo.patch} set={data.buildInfo.set}>
+  <div id="app-data" data-payload={clientPayload} style="display:none"></div>
+
+  <Overview champions={data.champions} traits={data.traits} items={data.items} />
+  <Champions champions={data.champions} />
+  <Items items={data.items} />
+  <Traits traits={data.traits} />
+  <Augments augments={data.augments} />
+  <Leaderboard />
+
+  <script src="../scripts/app.js"></script>
+</Layout>

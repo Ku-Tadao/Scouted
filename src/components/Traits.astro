@@ -1,0 +1,49 @@
+---
+import { SVG_ICONS } from '@/lib/icons';
+import type { TFTTrait } from '@/lib/types';
+
+interface Props {
+  traits: TFTTrait[];
+}
+
+const { traits } = Astro.props;
+---
+
+<section id="traits" class="content" style="display:none">
+    <div class="section-header">
+        <h2>Traits</h2>
+        <div class="search-filter">
+            <span class="search-icon"><Fragment set:html={SVG_ICONS.search} /></span>
+            <input type="text" id="traitSearch" placeholder="Search traits..." />
+        </div>
+    </div>
+
+    <div class="traits-grid">
+        {traits.map(trait => (
+            <div class="trait-card" data-trait-key={trait.key} data-trait-name={trait.name.toLowerCase()}>
+                <div class="trait-card-header">
+                    {trait.icon && <img src={trait.icon} alt={trait.name} loading="lazy" class="trait-icon" />}
+                    <div class="trait-card-title">
+                        <h4 class="trait-name">{trait.name}</h4>
+                        <span class="trait-type-badge">{trait.type}</span>
+                    </div>
+                </div>
+                <div class="trait-breakpoints">
+                    {trait.effects.map(e => (
+                        <span class={`bp-badge bp-style-${e.style}`}>{e.minUnits}</span>
+                    ))}
+                </div>
+                {trait.champions.length > 0 && (
+                    <div class="trait-champ-list">
+                        {trait.champions.slice(0, 6).map(name => (
+                            <span class="trait-champ-tag">{name}</span>
+                        ))}
+                        {trait.champions.length > 6 && (
+                            <span class="trait-champ-more">+{trait.champions.length - 6}</span>
+                        )}
+                    </div>
+                )}
+            </div>
+        ))}
+    </div>
+</section>

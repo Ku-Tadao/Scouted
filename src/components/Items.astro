@@ -1,0 +1,74 @@
+---
+import { SVG_ICONS } from '@/lib/icons';
+import type { TFTItem } from '@/lib/types';
+
+interface Props {
+  items: TFTItem[];
+}
+
+const { items } = Astro.props;
+
+const components = items.filter(i => i.isComponent);
+const completed = items.filter(i => i.isCompleted && !i.isRadiant);
+const radiant = items.filter(i => i.isRadiant);
+---
+
+<section id="items" class="content" style="display:none">
+    <div class="section-header">
+        <h2>Items</h2>
+        <div class="search-filter">
+            <span class="search-icon"><Fragment set:html={SVG_ICONS.search} /></span>
+            <input type="text" id="itemSearch" placeholder="Search items..." />
+        </div>
+    </div>
+
+    <div class="item-category-filters" id="itemCategoryFilters">
+        <button class="item-cat-filter active" data-cat="all" type="button">All <span class="count">{items.length}</span></button>
+        <button class="item-cat-filter" data-cat="component" type="button"><Fragment set:html={SVG_ICONS.grid} /> Components <span class="count">{components.length}</span></button>
+        <button class="item-cat-filter" data-cat="completed" type="button"><Fragment set:html={SVG_ICONS.sword} /> Completed <span class="count">{completed.length}</span></button>
+        {radiant.length > 0 && (
+            <button class="item-cat-filter" data-cat="radiant" type="button"><Fragment set:html={SVG_ICONS.sparkle} /> Radiant <span class="count">{radiant.length}</span></button>
+        )}
+    </div>
+
+    <!-- Components Section -->
+    <div class="item-section" data-item-cat="component">
+        <h3 class="item-section-title">Components</h3>
+        <div class="items-grid">
+            {components.map(item => (
+                <div class="item-card" data-item-id={item.uniqueId} data-item-name={item.name.toLowerCase()} data-item-type="component">
+                    <img src={item.icon} alt={item.name} loading="lazy" class="item-icon" />
+                    <span class="item-name">{item.name}</span>
+                </div>
+            ))}
+        </div>
+    </div>
+
+    <!-- Completed Items Section -->
+    <div class="item-section" data-item-cat="completed">
+        <h3 class="item-section-title">Completed Items</h3>
+        <div class="items-grid">
+            {completed.map(item => (
+                <div class="item-card" data-item-id={item.uniqueId} data-item-name={item.name.toLowerCase()} data-item-type="completed">
+                    <img src={item.icon} alt={item.name} loading="lazy" class="item-icon" />
+                    <span class="item-name">{item.name}</span>
+                </div>
+            ))}
+        </div>
+    </div>
+
+    <!-- Radiant Items Section -->
+    {radiant.length > 0 && (
+        <div class="item-section" data-item-cat="radiant">
+            <h3 class="item-section-title">Radiant Items</h3>
+            <div class="items-grid">
+                {radiant.map(item => (
+                    <div class="item-card item-radiant" data-item-id={item.uniqueId} data-item-name={item.name.toLowerCase()} data-item-type="radiant">
+                        <img src={item.icon} alt={item.name} loading="lazy" class="item-icon" />
+                        <span class="item-name">{item.name}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    )}
+</section>

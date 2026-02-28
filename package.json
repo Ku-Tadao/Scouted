@@ -1,0 +1,32 @@
+{
+  "name": "scouted",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A Teamfight Tactics data hub — explore champions, items, augments, comps, and leaderboards. Built with Astro.",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ku-Tadao/Scouted.git"
+  },
+  "keywords": [
+    "tft",
+    "teamfight-tactics",
+    "riot-api",
+    "static-site",
+    "astro"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Ku-Tadao/Scouted/issues"
+  },
+  "homepage": "https://github.com/Ku-Tadao/Scouted#readme",
+  "dependencies": {
+    "astro": "^5.18.0"
+  }
+}

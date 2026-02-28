@@ -1,0 +1,52 @@
+---
+import { SVG_ICONS } from '@/lib/icons';
+import type { TFTAugment } from '@/lib/types';
+
+interface Props {
+  augments: TFTAugment[];
+}
+
+const { augments } = Astro.props;
+
+const silver = augments.filter(a => a.tier === 1);
+const gold = augments.filter(a => a.tier === 2);
+const prismatic = augments.filter(a => a.tier === 3);
+---
+
+<section id="augments" class="content" style="display:none">
+    <div class="section-header">
+        <h2>Augments</h2>
+        <div class="search-filter">
+            <span class="search-icon"><Fragment set:html={SVG_ICONS.search} /></span>
+            <input type="text" id="augmentSearch" placeholder="Search augments..." />
+        </div>
+    </div>
+
+    <div class="augment-tier-filters" id="augmentTierFilters">
+        <button class="aug-tier-filter active" data-tier="all" type="button">All <span class="count">{augments.length}</span></button>
+        <button class="aug-tier-filter aug-silver" data-tier="1" type="button"><Fragment set:html={SVG_ICONS.shield} /> Silver <span class="count">{silver.length}</span></button>
+        <button class="aug-tier-filter aug-gold" data-tier="2" type="button"><Fragment set:html={SVG_ICONS.star} /> Gold <span class="count">{gold.length}</span></button>
+        <button class="aug-tier-filter aug-prismatic" data-tier="3" type="button"><Fragment set:html={SVG_ICONS.gem} /> Prismatic <span class="count">{prismatic.length}</span></button>
+    </div>
+
+    {augments.length === 0 ? (
+        <div class="empty-state">
+            <Fragment set:html={SVG_ICONS.gem} />
+            <p>Augment data is not available yet for this set. Check back after the next data update.</p>
+        </div>
+    ) : (
+        <div class="augments-grid" id="augmentsGrid">
+            {augments.map(aug => (
+                <div class={`augment-card aug-tier-${aug.tier}`} data-aug-id={aug.id} data-aug-name={aug.name.toLowerCase()} data-aug-tier={String(aug.tier)}>
+                    {aug.icon && <img src={aug.icon} alt={aug.name} loading="lazy" class="augment-icon" />}
+                    <div class="augment-info">
+                        <div class="augment-name">{aug.name}</div>
+                        <span class={`augment-tier-badge tier-${aug.tier}`}>
+                            {aug.tier === 1 ? 'Silver' : aug.tier === 2 ? 'Gold' : 'Prismatic'}
+                        </span>
+                    </div>
+                </div>
+            ))}
+        </div>
+    )}
+</section>
