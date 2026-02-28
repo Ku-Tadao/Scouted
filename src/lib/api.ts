@@ -7,15 +7,15 @@ import type { TFTChampion, TFTItem, TFTTrait, TFTAugment, ScoutedData } from './
  * for static TFT data. Riot's TFT API endpoints are used
  * client-side for live data (leaderboard, match history).
  *
- * Current set: TFT Set 14 (as of Feb 2026)
+ * Current set: TFT Set 16 (as of Feb 2026)
  */
 
 const CDRAGON_BASE = 'https://raw.communitydragon.org/latest';
 const DDRAGON_BASE = 'https://ddragon.leagueoflegends.com';
 
 // Current TFT set identifier — update when a new set releases
-const CURRENT_SET = 'TFTSet14';
-const CURRENT_SET_DISPLAY = 'Set 14';
+const CURRENT_SET = 'TFTSet16';
+const CURRENT_SET_DISPLAY = 'Set 16';
 
 async function fetchJSON<T>(url: string, retries = 2): Promise<T | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
