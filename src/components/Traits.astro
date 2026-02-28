@@ -41,7 +41,7 @@ const typeLabels: Record<string, string> = {
                     </div>
                 </div>
                 {trait.desc && (
-                    <p class="trait-desc">{trait.desc.replace(/<[^>]*>/g, '').replace(/@[^@]+@/g, '?').replace(/%i:[^%]+%/g, '').replace(/&nbsp;/g, ' ').replace(/\(\?\)/g, '').replace(/\s{2,}/g, ' ').trim()}</p>
+                    <p class="trait-desc" set:html={trait.desc} />
                 )}
                 <div class="trait-breakpoints">
                     {trait.effects.map(e => (

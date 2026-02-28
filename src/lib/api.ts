@@ -109,6 +109,96 @@ function parseCDragonChampions(raw: any[]): TFTChampion[] {
 }
 
 /**
+ * Format a number for display: round to 2 decimals max, strip trailing zeros.
+ */
+function formatNum(n: number): string {
+  if (n == null) return '?';
+  if (Number.isInteger(n)) return String(n);
+  const rounded = Math.round(n * 100) / 100;
+  return String(rounded);
+}
+
+/**
+ * Resolve @Variable@ and @Variable*N@ tokens in text using an effect's variables.
+ */
+function resolveVarsInText(text: string, effect: { minUnits: number; maxUnits: number; variables: Record<string, number> }): string {
+  return text.replace(/@([^@]+)@/g, (_match, token: string) => {
+    if (token === 'MinUnits') return String(effect.minUnits);
+    if (token === 'MaxUnits') return String(effect.maxUnits);
+    // Skip TFTUnitProperty (runtime game state)
+    if (token.startsWith('TFTUnitProperty')) return '';
+    // Handle @Var*N@ multiplication pattern
+    const multMatch = token.match(/^(.+)\*(\d+)$/);
+    if (multMatch) {
+      const val = effect.variables[multMatch[1]];
+      if (val != null) return formatNum(val * Number(multMatch[2]));
+      return '?';
+    }
+    // Simple variable lookup
+    const val = effect.variables[token];
+    if (val != null) return formatNum(val);
+    return '?';
+  });
+}
+
+/**
+ * Resolve a trait description by substituting variables from effects.
+ * - <expandRow> templates are expanded once per effect
+ * - <row> entries map 1:1 to effects in order
+ * - Remaining variables use the first effect's values
+ * - Runtime @TFTUnitProperty...@ tokens are removed
+ * - %i:scale...% icon tokens and HTML (except <br>) are stripped
+ */
+function resolveTraitDesc(rawDesc: string, effects: Array<{ minUnits: number; maxUnits: number; style: number; variables: Record<string, number> }>): string {
+  if (!rawDesc || effects.length === 0) return rawDesc || '';
+  let desc = rawDesc;
+
+  // 1. Expand <expandRow>...</expandRow> once per effect
+  desc = desc.replace(/<expandRow>(.*?)<\/expandRow>/gi, (_m, template: string) => {
+    return effects.map((e) => resolveVarsInText(template, e)).join('<br>');
+  });
+
+  // 2. Resolve <row>...</row> entries — each maps to the next effect in order
+  let rowIdx = 0;
+  desc = desc.replace(/<row>(.*?)<\/row>/gi, (_m, rowText: string) => {
+    const effect = effects[rowIdx] ?? effects[effects.length - 1];
+    rowIdx++;
+    return resolveVarsInText(rowText, effect);
+  });
+
+  // 3. Resolve remaining @var@ tokens using the first effect
+  desc = resolveVarsInText(desc, effects[0]);
+
+  // 4. Strip %i:scale...% icon tokens
+  desc = desc.replace(/%i:[^%]+%/g, '');
+  // 5. Replace &nbsp; with space
+  desc = desc.replace(/&nbsp;/g, ' ');
+  // 6. Strip HTML tags except <br>
+  desc = desc.replace(/<(?!br\s*\/?>)[^>]*>/gi, '');
+  // 7. Clean up orphaned formatting
+  desc = desc.replace(/\(\?\)/g, '');    // empty (?) from unresolved vars
+  desc = desc.replace(/\(\s*\)/g, '');    // empty () from stripped icon tokens
+  // 8. Split on <br>, clean each line, filter out garbage
+  const lines = desc.split(/<br\s*\/?>/i)
+    .map(s => s.replace(/\s{2,}/g, ' ').trim())
+    .filter(s => {
+      if (!s) return false;
+      // Drop "Label:" lines where content after colon has no letters (runtime status displays)
+      if (/^[^:]+:\s*[^a-zA-Z]*$/.test(s)) return false;
+      // Drop lines with no letters that aren't breakpoint rows — orphaned formatting like "% , %"
+      if (!/[a-zA-Z]/.test(s) && !s.startsWith('(')) return false;
+      return true;
+    });
+  desc = lines.join('<br>');
+  // Clean up excessive <br> sequences
+  desc = desc.replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>');
+  // Remove leading/trailing <br>
+  desc = desc.replace(/^(<br\s*\/?>\s*)+/gi, '').replace(/(<br\s*\/?>\s*)+$/gi, '');
+
+  return desc.trim();
+}
+
+/**
  * Classify traits into origin/class/unique based on their data.
  * cdragon doesn't provide type info, so we infer it:
  * - unique: single champion trait (1 breakpoint at minUnits=1)
@@ -130,21 +220,24 @@ function classifyTraitType(t: any): 'origin' | 'class' | 'unique' | 'teamup' {
 function parseCDragonTraits(raw: any[]): TFTTrait[] {
   return raw
     .filter((t: any) => t.name && !t.name.startsWith('TFT_Template'))
-    .map((t: any) => ({
-      key: t.apiName ?? t.name ?? '',
-      name: t.name ?? '',
-      desc: t.desc ?? '',
-      icon: assetUrl(t.icon),
-      type: classifyTraitType(t),
-      style: t.style ?? 0,
-      effects: (t.effects ?? []).map((e: any) => ({
+    .map((t: any) => {
+      const effects = (t.effects ?? []).map((e: any) => ({
         minUnits: e.minUnits ?? 0,
         maxUnits: e.maxUnits ?? 999,
         style: e.style ?? 0,
         variables: e.variables ?? {},
-      })),
-      champions: [] as { name: string; icon: string; id: string }[],
-    }))
+      }));
+      return {
+        key: t.apiName ?? t.name ?? '',
+        name: t.name ?? '',
+        desc: resolveTraitDesc(t.desc ?? '', effects),
+        icon: assetUrl(t.icon),
+        type: classifyTraitType(t),
+        style: t.style ?? 0,
+        effects,
+        champions: [] as { name: string; icon: string; id: string }[],
+      };
+    })
     .sort((a, b) => {
       // Sort: origins first, then classes, then unique/teamup
       const order = { origin: 0, class: 1, teamup: 2, unique: 3 };
