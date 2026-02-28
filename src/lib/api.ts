@@ -417,8 +417,16 @@ function parseSetItems(setItemRefs: string[], allItems: any[]): TFTItem[] {
 
 /**
  * Resolve augment references (string apiNames) against the top-level items array.
- * Tier is determined from the icon filename: -I/-II/-III or _I/_II/_III suffix.
+ * Tier is determined from item tags (hashed CDragon tag IDs):
+ *   {d11fd6d5} = Silver (1), {ce1fd21c} = Gold (2), {cf1fd3af} = Prismatic (3)
+ * Falls back to icon filename pattern (-I/-II/-III) if no tag match.
  */
+const AUGMENT_TIER_TAGS: Record<string, 1 | 2 | 3> = {
+  '{d11fd6d5}': 1, // Silver
+  '{ce1fd21c}': 2, // Gold
+  '{cf1fd3af}': 3, // Prismatic
+};
+
 function resolveAugments(augRefs: string[], allItems: any[]): TFTAugment[] {
   const itemMap = new Map<string, any>();
   allItems.forEach(i => { if (i.apiName) itemMap.set(i.apiName, i); });
@@ -428,11 +436,19 @@ function resolveAugments(augRefs: string[], allItems: any[]): TFTAugment[] {
       const raw = itemMap.get(ref);
       if (!raw || !raw.name) return null;
 
-      const iconFile = (raw.icon ?? '').split('/').pop() ?? '';
+      // Determine tier from tags first (most reliable)
       let tier: 1 | 2 | 3 = 2; // default gold
-      if (/[-_]III[._]/i.test(iconFile)) tier = 3;
-      else if (/[-_]II[._]/i.test(iconFile)) tier = 2;
-      else if (/[-_]I[._]/i.test(iconFile)) tier = 1;
+      const tags: string[] = raw.tags ?? [];
+      const tagTier = tags.find(t => t in AUGMENT_TIER_TAGS);
+      if (tagTier) {
+        tier = AUGMENT_TIER_TAGS[tagTier];
+      } else {
+        // Fallback: icon filename pattern
+        const iconFile = (raw.icon ?? '').split('/').pop() ?? '';
+        if (/[-_]III[._]/i.test(iconFile)) tier = 3;
+        else if (/[-_]II[._]/i.test(iconFile)) tier = 2;
+        else if (/[-_]I[._]/i.test(iconFile)) tier = 1;
+      }
 
       return {
         id: raw.apiName ?? ref,
