@@ -541,6 +541,10 @@ section.content { animation:fadeUp .45s cubic-bezier(.4,0,.2,1) both; }
 .trait-desc {
     font-size:.78rem; color:var(--muted); line-height:1.5; margin:0 0 .5rem;
     display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+    cursor:pointer; transition:all .2s ease;
+}
+.trait-desc.expanded {
+    -webkit-line-clamp:unset; display:block;
 }
 
 /* ═══ Augments Page ═══ */

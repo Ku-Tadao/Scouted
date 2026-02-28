@@ -14,12 +14,12 @@ export interface TFTChampion {
     variables: Record<string, number[]>;
   };
   stats: {
-    hp: number[];
+    hp: number;
     mana: number;
     initialMana: number;
     armor: number;
     magicResist: number;
-    damage: number[];
+    damage: number;
     attackSpeed: number;
     critChance: number;
     range: number;

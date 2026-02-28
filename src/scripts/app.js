@@ -170,11 +170,12 @@ function showChampionDetails(champId) {
 
   // Stats
   const s = champ.stats;
+  const fmtAS = typeof s.attackSpeed === 'number' && !Number.isInteger(s.attackSpeed) && String(s.attackSpeed).split('.')[1]?.length > 2 ? s.attackSpeed.toFixed(2) : String(s.attackSpeed);
   h += '<div class="cd-stats-grid">';
-  h += statCard('HP', s.hp[0] + ' / ' + s.hp[1] + ' / ' + s.hp[2]);
+  h += statCard('HP', s.hp);
   h += statCard('Mana', s.initialMana + ' / ' + s.mana);
-  h += statCard('Damage', s.damage[0] + ' / ' + s.damage[1] + ' / ' + s.damage[2]);
-  h += statCard('Atk Spd', s.attackSpeed.toFixed(2));
+  h += statCard('Damage', s.damage);
+  h += statCard('Atk Spd', fmtAS);
   h += statCard('Armor', s.armor);
   h += statCard('MR', s.magicResist);
   h += statCard('Range', s.range);
@@ -193,8 +194,8 @@ function showChampionDetails(champId) {
       let desc = champ.ability.desc;
       // Clean TFT ability desc placeholders like @AbilityValue@
       desc = desc.replace(/@[^@]+@/g, '?');
-      // strip inline html tags for safety
-      desc = desc.replace(/<[^>]*>/g, '');
+      // strip inline html tags, %i:scale...% tokens, &nbsp;
+      desc = desc.replace(/<[^>]*>/g, '').replace(/%i:[^%]+%/g, '').replace(/&nbsp;/g, ' ').replace(/\s{2,}/g, ' ').trim();
       h += '<p class="cd-ability-desc">' + desc + '</p>';
     }
     h += '</div></div>';
@@ -348,6 +349,11 @@ function bind() {
   // Trait search
   const ts = document.getElementById('traitSearch');
   if (ts) ts.addEventListener('input', (e) => filterTraits(e.target.value));
+
+  // Trait description click-to-expand
+  document.querySelectorAll('.trait-desc').forEach((el) =>
+    el.addEventListener('click', () => el.classList.toggle('expanded'))
+  );
 
   // Trait champion clicks → open champion modal
   document.querySelectorAll('.trait-champ-entry').forEach((el) =>
