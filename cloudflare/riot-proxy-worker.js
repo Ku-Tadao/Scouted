@@ -2,6 +2,7 @@ const REGIONS = ['na1', 'euw1', 'eun1', 'kr', 'jp1', 'oc1'];
 const TIERS = ['challenger', 'grandmaster', 'master'];
 const NAME_LOOKUP_BUDGET = 60;
 const NAME_REQUEST_DELAY_MS = 75;
+const MAX_DAILY_RUNS = 5;
 const REFRESH_STATE_KEY = 'meta:refresh_state';
 const REFRESH_STATE_TTL = 60 * 60 * 24 * 2;
 
@@ -95,6 +96,26 @@ export default {
     }
 
     if (!state.inProgress) return;
+
+    if (Number(state.runCount || 0) >= MAX_DAILY_RUNS) {
+      state.inProgress = false;
+      state.stoppedReason = 'max-attempts';
+      state.stoppedAt = new Date().toISOString();
+      await env.SCOUTED_KV.put(REFRESH_STATE_KEY, JSON.stringify(state), { expirationTtl: REFRESH_STATE_TTL });
+      await env.SCOUTED_KV.put(
+        'meta:last_refresh',
+        JSON.stringify({
+          at: new Date().toISOString(),
+          snapshots: 0,
+          unresolvedCandidates: state.lastUnresolved,
+          lookedUpToday: 0,
+          runCount: state.runCount,
+          mode: 'stopped-max-attempts',
+        }),
+        { expirationTtl: 60 * 60 * 24 * 7 },
+      );
+      return;
+    }
 
     const snapshotMap = new Map();
     const candidates = [];

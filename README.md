@@ -58,7 +58,7 @@ The client only sees `PUBLIC_RIOT_PROXY_URL` (non-secret). The Riot API key rema
 ### Daily refresh logic
 
 - Worker refreshes all region/tier leaderboard snapshots during scheduled runs.
-- Refresh starts at 02:00 Amsterdam local time and continues with retry loops until completion.
+- Refresh starts at 02:00 Amsterdam local time and retries minute-by-minute, capped at 5 runs/day.
 - Name lookups are rate-limited per run to stay under Riot thresholds and avoid Worker subrequest failures.
 - Runtime `/leaderboard` reads KV snapshot first (fast + no Riot burst traffic).
 
