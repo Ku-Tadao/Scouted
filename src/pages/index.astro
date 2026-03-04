@@ -22,10 +22,13 @@ const clientPayload = JSON.stringify({
   augments: data.augments,
   buildInfo: data.buildInfo,
 });
+
+const riotProxyUrl = import.meta.env.PUBLIC_RIOT_PROXY_URL ?? '';
 ---
 
 <Layout buildDate={buildDate} patch={data.buildInfo.patch} set={data.buildInfo.set}>
   <div id="app-data" data-payload={clientPayload} style="display:none"></div>
+  <div id="runtime-config" data-riot-proxy-url={riotProxyUrl} style="display:none"></div>
 
   <Overview champions={data.champions} traits={data.traits} items={data.items} />
   <Champions champions={data.champions} />

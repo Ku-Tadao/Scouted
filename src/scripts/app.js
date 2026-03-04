@@ -9,6 +9,8 @@
 // ── Globals ──
 const dataEl = document.getElementById('app-data');
 const DATA = dataEl ? JSON.parse(dataEl.dataset.payload || '{}') : {};
+const runtimeConfigEl = document.getElementById('runtime-config');
+const RIOT_PROXY_URL = (runtimeConfigEl?.dataset.riotProxyUrl || '').replace(/\/$/, '');
 
 const state = {
   lbRegion: 'na1',
@@ -662,6 +664,86 @@ function overviewSearch() {
   openPlayerModal(v);
 }
 
+function leaderboardWinRate(wins, losses) {
+  const total = Number(wins || 0) + Number(losses || 0);
+  if (!total) return '0.0%';
+  return ((Number(wins || 0) / total) * 100).toFixed(1) + '%';
+}
+
+function setLeaderboardStatus(message) {
+  const status = document.getElementById('lbStatus');
+  if (status) status.textContent = message;
+}
+
+function setLeaderboardPlaceholder(message) {
+  const body = document.getElementById('lbBody');
+  if (!body) return;
+  body.innerHTML =
+    '<tr class="lb-placeholder"><td colspan="6"><div class="lb-empty"><p>' + esc(message) + '</p></div></td></tr>';
+}
+
+function renderLeaderboard(entries) {
+  const body = document.getElementById('lbBody');
+  if (!body) return;
+  if (!Array.isArray(entries) || entries.length === 0) {
+    setLeaderboardPlaceholder('No leaderboard entries found for this region/tier.');
+    return;
+  }
+
+  body.innerHTML = entries
+    .map((entry, idx) => {
+      const wins = Number(entry.wins || 0);
+      const losses = Number(entry.losses || 0);
+      const rank = Number(entry.rank || idx + 1);
+      const lp = Number(entry.leaguePoints || 0);
+      return (
+        '<tr>' +
+          '<td class="lb-rank">' + rank + '</td>' +
+          '<td class="lb-player">' + esc(entry.summonerName || 'Unknown') + '</td>' +
+          '<td>' + lp + '</td>' +
+          '<td>' + wins + '</td>' +
+          '<td>' + losses + '</td>' +
+          '<td>' + leaderboardWinRate(wins, losses) + '</td>' +
+        '</tr>'
+      );
+    })
+    .join('');
+}
+
+async function loadLeaderboard() {
+  if (!RIOT_PROXY_URL) {
+    setLeaderboardStatus('Leaderboard proxy is not configured yet.');
+    setLeaderboardPlaceholder('Set PUBLIC_RIOT_PROXY_URL to enable live leaderboard data.');
+    return;
+  }
+
+  const region = state.lbRegion;
+  const tier = state.lbTier;
+  const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+
+  setLeaderboardStatus('Loading ' + tierLabel + ' — ' + region.toUpperCase() + '...');
+
+  try {
+    const endpoint =
+      RIOT_PROXY_URL + '/leaderboard?region=' + encodeURIComponent(region) + '&tier=' + encodeURIComponent(tier);
+    const res = await fetch(endpoint);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const msg = typeof body?.error === 'string' ? body.error : 'Failed to load leaderboard data.';
+      throw new Error(msg);
+    }
+
+    const payload = await res.json();
+    renderLeaderboard(payload.entries || []);
+    setLeaderboardStatus(tierLabel + ' — ' + region.toUpperCase() + ' — Updated just now');
+  } catch (error) {
+    console.error('Leaderboard load error:', error);
+    setLeaderboardStatus(tierLabel + ' — ' + region.toUpperCase() + ' — Unable to load leaderboard.');
+    setLeaderboardPlaceholder('Could not load leaderboard data right now.');
+  }
+}
+
 // ── Event Binding ──
 function bind() {
   // Navigation
@@ -813,7 +895,7 @@ function bind() {
     b.addEventListener('click', () => {
       state.lbRegion = b.dataset.region;
       document.querySelectorAll('.region-btn').forEach((r) => r.classList.toggle('active', r.dataset.region === state.lbRegion));
-      document.getElementById('lbStatus').textContent = 'Region: ' + state.lbRegion.toUpperCase() + ' — Connect Riot API to load data.';
+      loadLeaderboard();
     })
   );
 
@@ -822,7 +904,7 @@ function bind() {
     b.addEventListener('click', () => {
       state.lbTier = b.dataset.tier;
       document.querySelectorAll('.lb-tier-tab').forEach((t) => t.classList.toggle('active', t.dataset.tier === state.lbTier));
-      document.getElementById('lbStatus').textContent = state.lbTier.charAt(0).toUpperCase() + state.lbTier.slice(1) + ' — ' + state.lbRegion.toUpperCase() + ' — Connect Riot API to load data.';
+      loadLeaderboard();
     })
   );
 }
@@ -834,6 +916,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   bind();
   showSection('overview');
+  loadLeaderboard();
 });
 
 window.Scouted = { showChampionDetails, closeChampModal, showItemDetails, closeItemModal, showAugmentDetails, closeAugModal, openPlayerModal, closePlayerModal, overviewSearch };

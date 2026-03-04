@@ -27,6 +27,8 @@ jobs:
 
     - name: Build site
       run: npm run build
+      env:
+        PUBLIC_RIOT_PROXY_URL: ${{ vars.PUBLIC_RIOT_PROXY_URL }}
 
     - name: Deploy to GitHub Pages
       uses: peaceiris/actions-gh-pages@v4

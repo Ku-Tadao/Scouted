@@ -40,6 +40,17 @@ npm run dev      # http://localhost:4321
 npm run build    # dist/
 ```
 
+## Secure Riot API Proxy (Cloudflare Worker)
+
+This site stays on GitHub Pages, while live Riot requests go through a Cloudflare Worker proxy.
+
+1. Deploy worker script from [cloudflare/riot-proxy-worker.js](cloudflare/riot-proxy-worker.js)
+2. In Cloudflare Worker settings, add secret: `RIOT_API_KEY`
+3. In GitHub repo **Variables**, set: `PUBLIC_RIOT_PROXY_URL`
+	- Example: `https://scouted-riot-proxy.<your-subdomain>.workers.dev`
+
+The client only sees `PUBLIC_RIOT_PROXY_URL` (non-secret). The Riot API key remains server-side in Cloudflare.
+
 ## License
 
 Not affiliated with or endorsed by Riot Games, Inc.
