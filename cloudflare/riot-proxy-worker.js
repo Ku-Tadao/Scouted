@@ -1,5 +1,5 @@
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') {
@@ -69,12 +69,16 @@ export default {
           .sort((a, b) => Number(b.leaguePoints || 0) - Number(a.leaguePoints || 0))
           .map((entry, index) => ({
             rank: index + 1,
+            summonerId: entry.summonerId || entry.summoner_id || '',
+            puuid: entry.puuid || '',
             summonerName: entry.summonerName || 'Unknown',
             leaguePoints: Number(entry.leaguePoints || 0),
             wins: Number(entry.wins || 0),
             losses: Number(entry.losses || 0),
           }))
       : [];
+
+    await hydrateSummonerNames(entries, request, apiKey, region, ctx);
 
     return json(
       {
@@ -117,4 +121,70 @@ function isAllowedOrigin(origin) {
     origin === 'http://localhost:4321' ||
     origin === 'http://127.0.0.1:4321'
   );
+}
+
+async function hydrateSummonerNames(entries, request, apiKey, region, ctx) {
+  const NAME_LOOKUP_LIMIT = 20;
+  const BATCH_SIZE = 10;
+  const targets = entries
+    .filter((entry) => (!entry.summonerName || entry.summonerName === 'Unknown') && (entry.summonerId || entry.puuid))
+    .slice(0, NAME_LOOKUP_LIMIT);
+
+  for (let index = 0; index < targets.length; index += BATCH_SIZE) {
+    const batch = targets.slice(index, index + BATCH_SIZE);
+    const names = await Promise.all(
+      batch.map((entry) => resolveSummonerName(request, apiKey, region, entry.summonerId, entry.puuid, ctx)),
+    );
+
+    batch.forEach((entry, idx) => {
+      if (names[idx]) entry.summonerName = names[idx];
+    });
+  }
+}
+
+async function resolveSummonerName(request, apiKey, region, summonerId, puuid, ctx) {
+  if (!summonerId && !puuid) return null;
+  let name = null;
+
+  if (summonerId) {
+    const summonerUrl = `https://${region}.api.riotgames.com/tft/summoner/v1/summoners/${encodeURIComponent(summonerId)}`;
+    const res = await fetch(summonerUrl, {
+      headers: {
+        'X-Riot-Token': apiKey,
+      },
+    });
+
+    if (res.ok) {
+      const payload = await res.json().catch(() => null);
+      name = payload?.name || null;
+    }
+  }
+
+  if (!name && puuid) {
+    const regional = regionalRoutingForPlatform(region);
+    const accountUrl = `https://${regional}.api.riotgames.com/riot/account/v1/accounts/by-puuid/${encodeURIComponent(puuid)}`;
+    const accountRes = await fetch(accountUrl, {
+      headers: {
+        'X-Riot-Token': apiKey,
+      },
+    });
+
+    if (accountRes.ok) {
+      const account = await accountRes.json().catch(() => null);
+      if (account?.gameName) {
+        name = account?.tagLine ? `${account.gameName}#${account.tagLine}` : account.gameName;
+      }
+    }
+  }
+
+  if (!name) return null;
+  return name;
+}
+
+function regionalRoutingForPlatform(platform) {
+  if (platform === 'na1') return 'americas';
+  if (platform === 'euw1' || platform === 'eun1') return 'europe';
+  if (platform === 'kr' || platform === 'jp1') return 'asia';
+  if (platform === 'oc1') return 'sea';
+  return 'americas';
 }
