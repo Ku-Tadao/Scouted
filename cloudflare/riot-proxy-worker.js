@@ -1,5 +1,10 @@
+const REGIONS = ['na1', 'euw1', 'eun1', 'kr', 'jp1', 'oc1'];
+const TIERS = ['challenger', 'grandmaster', 'master'];
+const NAME_LOOKUP_BUDGET = 70;
+const NAME_REQUEST_DELAY_MS = 75;
+
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     const url = new URL(request.url);
 
     if (request.method === 'OPTIONS') {
@@ -7,11 +12,35 @@ export default {
     }
 
     if (url.pathname === '/health') {
-      return json({ ok: true, service: 'scouted-riot-proxy' }, 200, request);
+      return json(
+        {
+          ok: true,
+          service: 'scouted-riot-proxy',
+          snapshotMode: Boolean(env.SCOUTED_KV),
+        },
+        200,
+        request,
+      );
     }
 
     if (url.pathname !== '/leaderboard') {
       return json({ error: 'Not found' }, 404, request);
+    }
+
+    const region = (url.searchParams.get('region') || 'na1').toLowerCase();
+    const tier = (url.searchParams.get('tier') || 'challenger').toLowerCase();
+
+    if (!REGIONS.includes(region)) {
+      return json({ error: 'Invalid region' }, 400, request);
+    }
+
+    if (!TIERS.includes(tier)) {
+      return json({ error: 'Invalid tier' }, 400, request);
+    }
+
+    if (env.SCOUTED_KV) {
+      const snapshot = await getSnapshot(env.SCOUTED_KV, region, tier);
+      if (snapshot) return json(snapshot, 200, request);
     }
 
     const apiKey = env.RIOT_API_KEY;
@@ -19,77 +48,104 @@ export default {
       return json({ error: 'Server not configured' }, 500, request);
     }
 
-    const region = (url.searchParams.get('region') || 'na1').toLowerCase();
-    const tier = (url.searchParams.get('tier') || 'challenger').toLowerCase();
-
-    const allowedRegions = new Set(['na1', 'euw1', 'eun1', 'kr', 'jp1', 'oc1']);
-    const tierPath = {
-      challenger: 'challenger',
-      grandmaster: 'grandmaster',
-      master: 'master',
-    }[tier];
-
-    if (!allowedRegions.has(region)) {
-      return json({ error: 'Invalid region' }, 400, request);
-    }
-
-    if (!tierPath) {
-      return json({ error: 'Invalid tier' }, 400, request);
-    }
-
-    const riotUrl = `https://${region}.api.riotgames.com/tft/league/v1/${tierPath}`;
-
-    const upstream = await fetch(riotUrl, {
-      headers: {
-        'X-Riot-Token': apiKey,
-      },
-      cf: {
-        cacheTtl: 45,
-        cacheEverything: true,
-      },
-    });
-
-    if (!upstream.ok) {
-      const text = await upstream.text();
+    const fallback = await fetchLeaderboardBase(apiKey, region, tier);
+    if (!fallback.ok) {
       return json(
         {
           error: 'Riot API request failed',
-          status: upstream.status,
-          details: text.slice(0, 400),
+          status: fallback.status,
+          details: fallback.details,
         },
-        upstream.status,
+        fallback.status,
         request,
       );
     }
-
-    const data = await upstream.json();
-
-    const entries = Array.isArray(data.entries)
-      ? [...data.entries]
-          .sort((a, b) => Number(b.leaguePoints || 0) - Number(a.leaguePoints || 0))
-          .map((entry, index) => ({
-            rank: index + 1,
-            summonerId: entry.summonerId || entry.summoner_id || '',
-            puuid: entry.puuid || '',
-            summonerName: entry.summonerName || 'Unknown',
-            leaguePoints: Number(entry.leaguePoints || 0),
-            wins: Number(entry.wins || 0),
-            losses: Number(entry.losses || 0),
-          }))
-      : [];
-
-    await hydrateSummonerNames(entries, request, apiKey, region, ctx);
 
     return json(
       {
         region,
         tier,
-        queue: data.queue || null,
+        queue: fallback.data.queue || null,
         fetchedAt: new Date().toISOString(),
-        entries,
+        entries: fallback.data.entries,
       },
       200,
       request,
+    );
+  },
+
+  async scheduled(_event, env) {
+    if (!env.RIOT_API_KEY || !env.SCOUTED_KV) return;
+
+    const snapshotMap = new Map();
+    const candidates = [];
+
+    for (const region of REGIONS) {
+      for (const tier of TIERS) {
+        const result = await fetchLeaderboardBase(env.RIOT_API_KEY, region, tier);
+        if (!result.ok) continue;
+
+        const entries = result.data.entries;
+        for (const entry of entries) {
+          const cacheKey = playerCacheKey(entry);
+          if (!cacheKey) continue;
+
+          const knownName = await env.SCOUTED_KV.get(cacheKey);
+          if (knownName) {
+            entry.summonerName = knownName;
+            continue;
+          }
+
+          candidates.push({ region, tier, entry });
+        }
+
+        snapshotMap.set(snapshotKey(region, tier), {
+          region,
+          tier,
+          queue: result.data.queue || null,
+          fetchedAt: new Date().toISOString(),
+          entries,
+        });
+      }
+    }
+
+    const cursor = Number((await env.SCOUTED_KV.get('meta:name_cursor')) || '0') || 0;
+    let processed = 0;
+    let index = cursor % (candidates.length || 1);
+
+    while (processed < NAME_LOOKUP_BUDGET && candidates.length > 0) {
+      const target = candidates[index];
+      const name = await resolveSummonerName(env.RIOT_API_KEY, target.region, target.entry.summonerId, target.entry.puuid);
+      if (name) {
+        target.entry.summonerName = name;
+        const cacheKey = playerCacheKey(target.entry);
+        if (cacheKey) {
+          await env.SCOUTED_KV.put(cacheKey, name, { expirationTtl: 60 * 60 * 24 * 14 });
+        }
+      }
+
+      processed += 1;
+      index = (index + 1) % candidates.length;
+      await sleep(NAME_REQUEST_DELAY_MS);
+    }
+
+    for (const [key, snapshot] of snapshotMap.entries()) {
+      await env.SCOUTED_KV.put(key, JSON.stringify(snapshot), { expirationTtl: 60 * 60 * 24 * 2 });
+    }
+
+    if (candidates.length > 0) {
+      await env.SCOUTED_KV.put('meta:name_cursor', String(index % candidates.length));
+    }
+
+    await env.SCOUTED_KV.put(
+      'meta:last_refresh',
+      JSON.stringify({
+        at: new Date().toISOString(),
+        snapshots: snapshotMap.size,
+        unresolvedCandidates: candidates.length,
+        lookedUpToday: processed,
+      }),
+      { expirationTtl: 60 * 60 * 24 * 7 },
     );
   },
 };
@@ -123,26 +179,7 @@ function isAllowedOrigin(origin) {
   );
 }
 
-async function hydrateSummonerNames(entries, request, apiKey, region, ctx) {
-  const NAME_LOOKUP_LIMIT = 40;
-  const BATCH_SIZE = 10;
-  const targets = entries
-    .filter((entry) => (!entry.summonerName || entry.summonerName === 'Unknown') && (entry.summonerId || entry.puuid))
-    .slice(0, NAME_LOOKUP_LIMIT);
-
-  for (let index = 0; index < targets.length; index += BATCH_SIZE) {
-    const batch = targets.slice(index, index + BATCH_SIZE);
-    const names = await Promise.all(
-      batch.map((entry) => resolveSummonerName(request, apiKey, region, entry.summonerId, entry.puuid, ctx)),
-    );
-
-    batch.forEach((entry, idx) => {
-      if (names[idx]) entry.summonerName = names[idx];
-    });
-  }
-}
-
-async function resolveSummonerName(request, apiKey, region, summonerId, puuid, ctx) {
+async function resolveSummonerName(apiKey, region, summonerId, puuid) {
   if (!summonerId && !puuid) return null;
   let name = null;
 
@@ -179,6 +216,74 @@ async function resolveSummonerName(request, apiKey, region, summonerId, puuid, c
 
   if (!name) return null;
   return name;
+}
+
+async function fetchLeaderboardBase(apiKey, region, tier) {
+  const riotUrl = `https://${region}.api.riotgames.com/tft/league/v1/${tier}`;
+  const upstream = await fetch(riotUrl, {
+    headers: {
+      'X-Riot-Token': apiKey,
+    },
+    cf: {
+      cacheTtl: 45,
+      cacheEverything: true,
+    },
+  });
+
+  if (!upstream.ok) {
+    return {
+      ok: false,
+      status: upstream.status,
+      details: (await upstream.text()).slice(0, 400),
+    };
+  }
+
+  const payload = await upstream.json();
+  const entries = Array.isArray(payload.entries)
+    ? [...payload.entries]
+        .sort((a, b) => Number(b.leaguePoints || 0) - Number(a.leaguePoints || 0))
+        .map((entry, index) => ({
+          rank: index + 1,
+          summonerId: entry.summonerId || entry.summoner_id || '',
+          puuid: entry.puuid || '',
+          summonerName: entry.summonerName || 'Unknown',
+          leaguePoints: Number(entry.leaguePoints || 0),
+          wins: Number(entry.wins || 0),
+          losses: Number(entry.losses || 0),
+        }))
+    : [];
+
+  return {
+    ok: true,
+    data: {
+      queue: payload.queue || null,
+      entries,
+    },
+  };
+}
+
+function playerCacheKey(entry) {
+  if (entry?.puuid) return `name:puuid:${entry.puuid}`;
+  if (entry?.summonerId) return `name:sid:${entry.summonerId}`;
+  return null;
+}
+
+function snapshotKey(region, tier) {
+  return `lb:${region}:${tier}`;
+}
+
+async function getSnapshot(kv, region, tier) {
+  const raw = await kv.get(snapshotKey(region, tier));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function regionalRoutingForPlatform(platform) {

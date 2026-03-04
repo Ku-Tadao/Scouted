@@ -46,10 +46,20 @@ This site stays on GitHub Pages, while live Riot requests go through a Cloudflar
 
 1. Deploy worker script from [cloudflare/riot-proxy-worker.js](cloudflare/riot-proxy-worker.js)
 2. In Cloudflare Worker settings, add secret: `RIOT_API_KEY`
-3. In GitHub repo **Variables**, set: `PUBLIC_RIOT_PROXY_URL`
+3. Create a KV namespace (for snapshot + name cache), then bind it to the Worker as `SCOUTED_KV`
+4. Add Worker Cron Trigger (daily)
+	- Suggested: `15 23 * * *` (runs 23:15 UTC; adjust to your local midnight window)
+5. In GitHub repo **Variables**, set: `PUBLIC_RIOT_PROXY_URL`
 	- Example: `https://scouted-riot-proxy.<your-subdomain>.workers.dev`
 
 The client only sees `PUBLIC_RIOT_PROXY_URL` (non-secret). The Riot API key remains server-side in Cloudflare.
+
+### Daily refresh logic
+
+- Worker refreshes all region/tier leaderboard snapshots during the cron run.
+- Name lookups are budgeted (`~70/day`) with pacing to stay within Riot limits.
+- Unknown names are filled progressively across days via a persistent cursor.
+- Runtime `/leaderboard` reads KV snapshot first (fast + no Riot burst traffic).
 
 ## License
 
