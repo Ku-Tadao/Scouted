@@ -124,7 +124,7 @@ function isAllowedOrigin(origin) {
 }
 
 async function hydrateSummonerNames(entries, request, apiKey, region, ctx) {
-  const NAME_LOOKUP_LIMIT = 20;
+  const NAME_LOOKUP_LIMIT = 40;
   const BATCH_SIZE = 10;
   const targets = entries
     .filter((entry) => (!entry.summonerName || entry.summonerName === 'Unknown') && (entry.summonerId || entry.puuid))
