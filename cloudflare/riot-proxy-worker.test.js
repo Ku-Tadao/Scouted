@@ -5,6 +5,7 @@ import worker, { RateLimiter } from './riot-proxy-worker.js';
 const calls = [];
 let rateLimitAfter = Infinity;
 const match429s = new Map(); // matchId -> how many 429s to return before succeeding
+let totalMatches = 2; // length of the fake player's match history
 globalThis.fetch = async (url) => {
   calls.push(url);
   const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
@@ -18,7 +19,12 @@ globalThis.fetch = async (url) => {
   if (url.includes('/accounts/by-riot-id/')) return ok({ puuid: 'me', gameName: 'Some Player', tagLine: 'OCE' });
   if (url.includes('/region/by-game/tft/')) return ok({ puuid: 'me', game: 'tft', region: 'OC1' });
   if (url.includes('/tft/league/v1/by-puuid/')) return ok([{ queueType: 'RANKED_TFT', tier: 'DIAMOND', rank: 'II', leaguePoints: 40, wins: 10, losses: 20 }]);
-  if (url.includes('/ids?')) return ok(['OC1_1', 'OC1_2']);
+  if (url.includes('/ids?')) {
+    const q = new URL(url).searchParams;
+    const start = Number(q.get('start') || 0);
+    const count = Math.max(0, Math.min(Number(q.get('count')), totalMatches - start));
+    return ok(Array.from({ length: count }, (_, i) => `OC1_${start + i + 1}`));
+  }
   if (url.includes('/tft/match/v1/matches/')) {
     const id = url.split('/').pop();
     if (match429s.get(id) > 0) {
@@ -121,6 +127,25 @@ const retried = await (await worker.fetch(new Request('https://w/player?puuid=me
 assert.deepEqual(retried.matches.map((m) => m.id), ['OC1_1']);
 assert.equal(retried.missingMatches, 1);
 assert.equal(body.missingMatches, 0);
+assert.equal(body.puuid, 'me');
+assert.equal(body.nextStart, null, 'fewer than 10 matches: nothing more to load');
+
+// Load more: the first page ends at 10, /matches returns the rest from the match cluster only.
+totalMatches = 15;
+const firstPage = await (await worker.fetch(new Request('https://w/player?puuid=me'), env)).json();
+assert.equal(firstPage.matches.length, 10);
+assert.equal(firstPage.nextStart, 10);
+calls.length = 0;
+const more = await worker.fetch(new Request('https://w/matches?puuid=me&region=oc1&start=10'), env);
+const morePage = await more.json();
+assert.equal(more.status, 200);
+assert.deepEqual(morePage.matches.map((m) => m.id), ['OC1_11', 'OC1_12', 'OC1_13', 'OC1_14', 'OC1_15']);
+assert.equal(morePage.nextStart, null);
+assert.ok(calls.every((u) => u.startsWith('https://sea.api.riotgames.com/tft/match/v1/')), 'no account or rank calls');
+for (const bad of ['puuid=me&region=xx1&start=10', 'puuid=../x&region=oc1&start=10', 'puuid=me&region=oc1&start=0', 'puuid=me&region=oc1&start=abc']) {
+  assert.equal((await worker.fetch(new Request('https://w/matches?' + bad), env)).status, 400, bad);
+}
+totalMatches = 2;
 
 // Rate limits: per visitor IP, then per match cluster once the player's region is known.
 // Fake Durable Object namespace running the real RateLimiter class on in-memory storage.
@@ -149,6 +174,9 @@ const tooMany = await search('1.1.1.1');
 assert.equal(tooMany.status, 429);
 assert.match((await tooMany.json()).error, /Too many searches/);
 assert.equal(calls.length, 0, 'IP limit is checked before any Riot call');
+const moreBlocked = await worker.fetch(new Request('https://w/matches?puuid=me&region=oc1&start=10', { headers: { 'CF-Connecting-IP': '1.1.1.1' } }), limited);
+assert.equal(moreBlocked.status, 429, 'load more counts against the same per-IP limit');
+assert.equal(calls.length, 0);
 assert.equal(objects.size, 3, 'one limiter object per key: 2 IPs + the sea cluster');
 
 // The window slides: a minute later the same IP can search again.

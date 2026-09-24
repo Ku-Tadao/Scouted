@@ -57,7 +57,8 @@ The client only sees `PUBLIC_RIOT_PROXY_URL` (non-secret). The Riot API key rema
 
 - `GET /leaderboard?region=euw1&tier=challenger` — KV snapshot first, live Riot fallback.
 - `GET /player?riotId=Name%23TAG` (or `?puuid=`) — account, TFT region, ranks and last 10 matches (~14 Riot calls per search).
-  Rate limited to 6 searches/min per visitor IP and 4/min per match cluster, counted exactly by the `RateLimiter` Durable Object.
+- `GET /matches?puuid=…&region=euw1&start=10` — next page of 10 matches for a profile's "Load more" (11 Riot calls, same rate limits as a search).
+  `/player` and `/matches` share a limit of 6 requests/min per visitor IP and 4/min per match cluster, counted exactly by the `RateLimiter` Durable Object.
 - `GET /health`
 
 ### Leaderboard refresh

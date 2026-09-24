@@ -45,6 +45,7 @@ export default {
 
     if (url.pathname === '/leaderboard') return leaderboard(url, env, request);
     if (url.pathname === '/player') return player(url, env, request);
+    if (url.pathname === '/matches') return moreMatches(url, env, request);
     return json({ error: 'Not found' }, 404, request);
   },
 
@@ -151,12 +152,14 @@ async function refreshBoard(env, region, tier) {
 // stops one visitor from using up the budget. Raise both with a production key.
 const IP_SEARCHES_PER_MIN = 6;
 const CLUSTER_SEARCHES_PER_MIN = 4;
+const TOO_MANY_SEARCHES = 'Too many searches, wait a minute and try again';
+const CLUSTER_BUSY = 'Player search is busy right now, try again in a minute';
 
 async function player(url, env, request) {
   const apiKey = env.RIOT_API_KEY;
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   if (!(await allow(env, `ip:${ip}`, IP_SEARCHES_PER_MIN))) {
-    return json({ error: 'Too many searches, wait a minute and try again' }, 429, request);
+    return json({ error: TOO_MANY_SEARCHES }, 429, request);
   }
 
   const puuidParam = url.searchParams.get('puuid');
@@ -188,31 +191,20 @@ async function player(url, env, request) {
   const matchRouting = MATCH_ROUTING[region];
   if (!matchRouting) return json({ error: `Unsupported region: ${region}` }, 502, request);
   if (!(await allow(env, `cluster:${matchRouting}`, CLUSTER_SEARCHES_PER_MIN))) {
-    return json({ error: 'Player search is busy right now, try again in a minute' }, 429, request);
+    return json({ error: CLUSTER_BUSY }, 429, request);
   }
 
-  const [ranks, matchIds] = await Promise.all([
+  const [ranks, page] = await Promise.all([
     riotJson(`https://${region}.api.riotgames.com/tft/league/v1/by-puuid/${encodeURIComponent(puuid)}`, apiKey, 60, true),
-    riotJson(
-      `https://${matchRouting}.api.riotgames.com/tft/match/v1/matches/by-puuid/${encodeURIComponent(puuid)}/ids?count=${PLAYER_MATCH_COUNT}`,
-      apiKey,
-      60,
-      true,
-    ),
+    fetchMatchPage(apiKey, matchRouting, puuid, 0),
   ]);
   if (!ranks.ok) return riotError(ranks, request, 'Rank not found');
-  if (!matchIds.ok) return riotError(matchIds, request, 'Match history not found');
-
-  // Matches never change, so they cache for a day.
-  const matches = await Promise.all(
-    matchIds.data.map((id) =>
-      riotJson(`https://${matchRouting}.api.riotgames.com/tft/match/v1/matches/${encodeURIComponent(id)}`, apiKey, 86400, true),
-    ),
-  );
+  if (!page.ok) return riotError(page, request, 'Match history not found');
 
   return json(
     {
       riotId: `${account.data.gameName}#${account.data.tagLine}`,
+      puuid,
       region,
       ranks: ranks.data.map((r) => ({
         queue: r.queueType,
@@ -222,12 +214,49 @@ async function player(url, env, request) {
         wins: r.wins,
         losses: r.losses,
       })),
-      matches: matches.filter((m) => m.ok).map((m) => summarizeMatch(m.data, puuid)).filter(Boolean),
-      missingMatches: matches.filter((m) => !m.ok).length,
+      matches: page.matches,
+      missingMatches: page.missingMatches,
+      nextStart: page.nextStart,
     },
     200,
     request,
   );
+}
+
+// "Load more" on a profile: the next page for a player the client already looked up. It skips the
+// account lookups but costs the same match-cluster calls as a search, so it counts against the same limits.
+async function moreMatches(url, env, request) {
+  const puuid = url.searchParams.get('puuid') || '';
+  const region = (url.searchParams.get('region') || '').toLowerCase();
+  const start = Number(url.searchParams.get('start'));
+  const matchRouting = MATCH_ROUTING[region];
+  if (!/^[\w-]{1,100}$/.test(puuid) || !matchRouting || !Number.isInteger(start) || start < 1 || start > 1000) {
+    return json({ error: 'Invalid request' }, 400, request);
+  }
+
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (!(await allow(env, `ip:${ip}`, IP_SEARCHES_PER_MIN))) return json({ error: TOO_MANY_SEARCHES }, 429, request);
+  if (!(await allow(env, `cluster:${matchRouting}`, CLUSTER_SEARCHES_PER_MIN))) return json({ error: CLUSTER_BUSY }, 429, request);
+
+  const page = await fetchMatchPage(env.RIOT_API_KEY, matchRouting, puuid, start);
+  if (!page.ok) return riotError(page, request, 'Match history not found');
+  return json({ matches: page.matches, missingMatches: page.missingMatches, nextStart: page.nextStart }, 200, request);
+}
+
+// One page of match history: 1 ids call + up to PLAYER_MATCH_COUNT match calls on the match cluster.
+async function fetchMatchPage(apiKey, matchRouting, puuid, start) {
+  const base = `https://${matchRouting}.api.riotgames.com/tft/match/v1/matches`;
+  const ids = await riotJson(`${base}/by-puuid/${encodeURIComponent(puuid)}/ids?start=${start}&count=${PLAYER_MATCH_COUNT}`, apiKey, 60, true);
+  if (!ids.ok) return ids;
+
+  // Matches never change, so they cache for a day.
+  const matches = await Promise.all(ids.data.map((id) => riotJson(`${base}/${encodeURIComponent(id)}`, apiKey, 86400, true)));
+  return {
+    ok: true,
+    matches: matches.filter((m) => m.ok).map((m) => summarizeMatch(m.data, puuid)).filter(Boolean),
+    missingMatches: matches.filter((m) => !m.ok).length,
+    nextStart: ids.data.length === PLAYER_MATCH_COUNT ? start + PLAYER_MATCH_COUNT : null,
+  };
 }
 
 // One RateLimiter object per key, so every request for that key is counted in one place, exactly.

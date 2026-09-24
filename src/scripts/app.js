@@ -682,6 +682,7 @@ async function searchPlayer(puuid) {
     if (!res.ok) throw new Error(typeof body.error === 'string' ? body.error : 'Search failed.');
     results.textContent = '';
     input.value = body.riotId;
+    profilePage = { puuid: body.puuid, region: body.region, nextStart: body.nextStart };
     profile.innerHTML = renderPlayerProfile(body);
     profile.classList.remove('hidden');
   } catch (error) {
@@ -705,12 +706,51 @@ function renderPlayerProfile(p) {
   });
   h += '</div>';
 
-  const missing = p.missingMatches
-    ? '<p class="muted pp-missing">' + p.missingMatches + ' recent match' + (p.missingMatches === 1 ? '' : 'es') + " couldn't load (Riot rate limit). Try again in a minute.</p>"
-    : '';
-  if (!p.matches || !p.matches.length) return h + (missing || '<p class="muted">No recent TFT matches.</p>');
-  h += '<div class="pp-matches">' + p.matches.map(renderMatchRow).join('') + '</div>' + missing;
+  if (!p.matches.length && p.nextStart == null) {
+    return h + '<p class="muted">' + (missingMatchesText(p.missingMatches) || 'No recent TFT matches.') + '</p>';
+  }
+  h += '<div class="pp-matches">' + p.matches.map(renderMatchRow).join('') + '</div>';
+  h += '<p class="muted pp-missing" id="ppMatchStatus">' + missingMatchesText(p.missingMatches) + '</p>';
+  if (p.nextStart != null) h += '<button type="button" id="ppLoadMore" class="btn btn-ghost btn-sm">Load more</button>';
   return h;
+}
+
+function missingMatchesText(n) {
+  return n ? n + ' match' + (n === 1 ? '' : 'es') + " couldn't load (Riot rate limit). Try again in a minute." : '';
+}
+
+// The profile on screen, so "Load more" knows which page to ask for next.
+let profilePage = null;
+
+async function loadMoreMatches() {
+  const btn = document.getElementById('ppLoadMore');
+  const status = document.getElementById('ppMatchStatus');
+  const list = document.querySelector('#playerProfile .pp-matches');
+  if (!btn || !status || !list || !profilePage || profilePage.nextStart == null) return;
+
+  const seq = playerSearchSeq;
+  btn.disabled = true;
+  btn.textContent = 'Loading...';
+  status.textContent = '';
+  try {
+    const res = await fetch(
+      RIOT_PROXY_URL + '/matches?puuid=' + encodeURIComponent(profilePage.puuid) +
+        '&region=' + encodeURIComponent(profilePage.region) + '&start=' + profilePage.nextStart
+    );
+    const body = await res.json().catch(() => ({}));
+    if (seq !== playerSearchSeq) return; // a different player was searched meanwhile
+    if (!res.ok) throw new Error(typeof body.error === 'string' ? body.error : 'Could not load more matches.');
+    list.insertAdjacentHTML('beforeend', body.matches.map(renderMatchRow).join(''));
+    status.textContent = missingMatchesText(body.missingMatches);
+    profilePage.nextStart = body.nextStart;
+  } catch (error) {
+    if (seq === playerSearchSeq) status.textContent = error.message || 'Could not load more matches.';
+  } finally {
+    if (seq === playerSearchSeq) {
+      if (profilePage.nextStart == null) btn.remove();
+      else { btn.disabled = false; btn.textContent = 'Load more'; }
+    }
+  }
 }
 
 function renderMatchRow(m) {
@@ -972,6 +1012,8 @@ function bind() {
   if (psb) psb.addEventListener('click', () => searchPlayer());
   const pin = document.getElementById('playerInput');
   if (pin) pin.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchPlayer(); });
+  const pp = document.getElementById('playerProfile');
+  if (pp) pp.addEventListener('click', (e) => { if (e.target.closest('#ppLoadMore')) loadMoreMatches(); });
 
   // Leaderboard rows → player profile (rows are re-rendered, so delegate from the body)
   const lbBody = document.getElementById('lbBody');

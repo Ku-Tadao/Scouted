@@ -720,6 +720,8 @@ section.content { animation:fadeUp .45s cubic-bezier(.4,0,.2,1) both; }
 .pp-rank-queue { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
 .pp-matches { display:flex; flex-direction:column; gap:.5rem; }
 .pp-missing { font-size:.8rem; margin-top:.6rem; }
+.pp-missing:empty { display:none; }
+#ppLoadMore { margin-top:.75rem; }
 .pp-match {
     display:flex; gap:.85rem; align-items:flex-start; padding:.65rem;
     border-radius:var(--radius); background:var(--surface-strong); border:1px solid var(--border);
