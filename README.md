@@ -47,20 +47,24 @@ This site stays on GitHub Pages, while live Riot requests go through a Cloudflar
 1. Deploy worker script from [cloudflare/riot-proxy-worker.js](cloudflare/riot-proxy-worker.js)
 2. In Cloudflare Worker settings, add secret: `RIOT_API_KEY`
 3. Create a KV namespace (for snapshot + name cache), then bind it to the Worker as `SCOUTED_KV`
-4. Add Worker Cron Trigger (every minute)
-	- Use: `* * * * *`
-	- The Worker itself starts refresh at **02:00 Europe/Amsterdam** and keeps retrying minute-by-minute until that day’s refresh is done.
+4. Add Worker Cron Trigger: `*/5 * * * *` (every minute also works; off-slot runs exit immediately)
 5. In GitHub repo **Variables**, set: `PUBLIC_RIOT_PROXY_URL`
 	- Example: `https://scouted-riot-proxy.<your-subdomain>.workers.dev`
 
 The client only sees `PUBLIC_RIOT_PROXY_URL` (non-secret). The Riot API key remains server-side in Cloudflare.
 
-### Daily refresh logic
+### Endpoints
 
-- Worker refreshes all region/tier leaderboard snapshots during scheduled runs.
-- Refresh starts at 02:00 Amsterdam local time and retries minute-by-minute, capped at 5 runs/day.
-- Name lookups are rate-limited per run to stay under Riot thresholds and avoid Worker subrequest failures.
-- Runtime `/leaderboard` reads KV snapshot first (fast + no Riot burst traffic).
+- `GET /leaderboard?region=euw1&tier=challenger` — KV snapshot first, live Riot fallback.
+- `GET /player?riotId=Name%23TAG` — account, TFT region, ranks and last 10 matches (~14 Riot calls per search).
+- `GET /health`
+
+### Leaderboard refresh
+
+- Each 5-minute cron slot refreshes one region/tier board, so all 18 boards refresh every 90 minutes.
+- Each run resolves up to 45 missing player names (Riot IDs via account-v1), top ranks first, and stops early on a 429.
+- Names are stored per region in one KV key (`names:<region>`); snapshots in `lb:<region>:<tier>`.
+- Sized for the free plans: ≤ 46 subrequests per run, ~580 KV writes/day, well under the personal-key rate limit.
 
 ## License
 

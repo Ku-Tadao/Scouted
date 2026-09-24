@@ -27,6 +27,15 @@ const esc = (v) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+function timeAgo(ms) {
+  const mins = Math.round((ms - Date.now()) / 60000);
+  if (Math.abs(mins) < 60) return rtf.format(mins, 'minute');
+  const hours = Math.round(mins / 60);
+  if (Math.abs(hours) < 24) return rtf.format(hours, 'hour');
+  return rtf.format(Math.round(hours / 24), 'day');
+}
+
 // ── Stat Keyword Colorization ──
 // Colorize stat keywords in descriptions (same colors as trait descriptions).
 // Uses placeholder approach to prevent double-wrapping.
@@ -644,6 +653,85 @@ function openPlayerModal(prefill) {
   const pi = document.getElementById('playerInput');
   if (pi && prefill) pi.value = prefill;
   if (pi) pi.focus();
+  if (prefill) searchPlayer();
+}
+
+async function searchPlayer() {
+  const input = document.getElementById('playerInput');
+  const results = document.getElementById('playerSearchResults');
+  const profile = document.getElementById('playerProfile');
+  if (!input || !results || !profile) return;
+  const riotId = input.value.trim();
+  if (!riotId) return;
+
+  profile.innerHTML = '';
+  profile.classList.add('hidden');
+  if (!RIOT_PROXY_URL) { results.textContent = 'Player search is not configured yet.'; return; }
+  if (!riotId.includes('#')) { results.textContent = 'Enter a Riot ID like Name#TAG.'; return; }
+
+  results.textContent = 'Searching...';
+  try {
+    const res = await fetch(RIOT_PROXY_URL + '/player?riotId=' + encodeURIComponent(riotId));
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body.error === 'string' ? body.error : 'Search failed.');
+    results.textContent = '';
+    profile.innerHTML = renderPlayerProfile(body);
+    profile.classList.remove('hidden');
+  } catch (error) {
+    results.textContent = error.message || 'Search failed.';
+  }
+}
+
+const QUEUE_NAMES = { 1090: 'Normal', 1100: 'Ranked', 1130: 'Hyper Roll', 1160: 'Double Up' };
+const RANK_QUEUE_NAMES = { RANKED_TFT: 'Ranked', RANKED_TFT_DOUBLE_UP: 'Double Up', RANKED_TFT_TURBO: 'Hyper Roll' };
+
+function renderPlayerProfile(p) {
+  let h = '<div class="pp-header"><h3>' + esc(p.riotId) + '</h3><span class="pp-region">' + esc(String(p.region).toUpperCase()) + '</span></div>';
+
+  h += '<div class="pp-ranks">';
+  if (!p.ranks || !p.ranks.length) h += '<span class="muted">Unranked this set</span>';
+  (p.ranks || []).forEach((r) => {
+    const tier = r.tier ? r.tier.charAt(0) + r.tier.slice(1).toLowerCase() + (r.rank && !/^(MASTER|GRANDMASTER|CHALLENGER)$/.test(r.tier) ? ' ' + r.rank : '') : 'Unranked';
+    h += '<div class="pp-rank"><span class="pp-rank-queue">' + esc(RANK_QUEUE_NAMES[r.queue] || r.queue) + '</span>';
+    h += '<strong>' + esc(tier) + (r.leaguePoints != null ? ' · ' + esc(r.leaguePoints) + ' LP' : '') + '</strong>';
+    h += '<span class="muted">' + esc(r.wins) + 'W ' + esc(r.losses) + 'L</span></div>';
+  });
+  h += '</div>';
+
+  if (!p.matches || !p.matches.length) return h + '<p class="muted">No recent TFT matches.</p>';
+  h += '<div class="pp-matches">' + p.matches.map(renderMatchRow).join('') + '</div>';
+  return h;
+}
+
+function renderMatchRow(m) {
+  const placeClass = m.placement === 1 ? 'pp-place-1' : m.placement <= 4 ? 'pp-place-top4' : 'pp-place-bot4';
+  let h = '<div class="pp-match">';
+  h += '<div class="pp-place ' + placeClass + '">' + esc(m.placement) + '</div>';
+  h += '<div class="pp-match-body"><div class="pp-match-meta">' + esc(QUEUE_NAMES[m.queueId] || 'TFT') + ' · ' + esc(timeAgo(m.playedAt)) + ' · Lv ' + esc(m.level) + '</div>';
+
+  h += '<div class="pp-units">';
+  m.units.forEach((u) => {
+    const champ = DATA.champions?.find((c) => c.championId.toLowerCase() === String(u.id).toLowerCase());
+    const name = champ ? champ.name : String(u.id).replace(/^TFT\d*_/i, '');
+    const stars = '★'.repeat(u.stars || 1);
+    h += '<div class="pp-unit" title="' + esc(name + ' ' + stars) + '">';
+    h += champ ? '<img src="' + esc(champ.tileIcon || champ.icon) + '" alt="' + esc(name) + '" loading="lazy" style="border-color:var(--cost-' + champ.cost + ')" />' : '<span class="pp-unit-fallback">' + esc(name.slice(0, 3)) + '</span>';
+    h += '<span class="pp-stars pp-stars-' + (u.stars || 1) + '">' + stars + '</span>';
+    h += '<span class="pp-items">';
+    u.items.forEach((itemId) => {
+      const item = DATA.items?.find((i) => i.uniqueId === itemId);
+      if (item && item.icon) h += '<img src="' + esc(item.icon) + '" alt="' + esc(item.name) + '" title="' + esc(item.name) + '" loading="lazy" />';
+    });
+    h += '</span></div>';
+  });
+  h += '</div>';
+
+  const augs = (m.augments || []).map((id) => DATA.augments?.find((a) => a.id === id)).filter(Boolean);
+  if (augs.length) {
+    h += '<div class="pp-augments">' + augs.map((a) => '<img src="' + esc(a.icon) + '" alt="' + esc(a.name) + '" title="' + esc(a.name) + '" loading="lazy" />').join('') + '</div>';
+  }
+  h += '</div></div>';
+  return h;
 }
 
 function closePlayerModal() {
@@ -736,7 +824,9 @@ async function loadLeaderboard() {
 
     const payload = await res.json();
     renderLeaderboard(payload.entries || []);
-    setLeaderboardStatus(tierLabel + ' — ' + region.toUpperCase() + ' — Updated just now');
+    const updated = payload.fetchedAt ? timeAgo(Date.parse(payload.fetchedAt)) : 'just now';
+    const pending = payload.unresolvedNames ? ' — ' + payload.unresolvedNames + ' names still resolving' : '';
+    setLeaderboardStatus(tierLabel + ' — ' + region.toUpperCase() + ' — Updated ' + updated + pending);
   } catch (error) {
     console.error('Leaderboard load error:', error);
     setLeaderboardStatus(tierLabel + ' — ' + region.toUpperCase() + ' — Unable to load leaderboard.');
@@ -855,6 +945,11 @@ function bind() {
   const augModal = document.getElementById('augModal');
   if (augModal) augModal.addEventListener('click', (e) => { if (e.target === augModal) closeAugModal(); });
 
+  const psb = document.getElementById('playerSearchBtn');
+  if (psb) psb.addEventListener('click', searchPlayer);
+  const pin = document.getElementById('playerInput');
+  if (pin) pin.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchPlayer(); });
+
   const pmc = document.getElementById('playerModalClose');
   if (pmc) pmc.addEventListener('click', closePlayerModal);
   const pm = document.getElementById('playerModal');
@@ -919,4 +1014,4 @@ document.addEventListener('DOMContentLoaded', () => {
   loadLeaderboard();
 });
 
-window.Scouted = { showChampionDetails, closeChampModal, showItemDetails, closeItemModal, showAugmentDetails, closeAugModal, openPlayerModal, closePlayerModal, overviewSearch };
+window.Scouted = { showChampionDetails, closeChampModal, showItemDetails, closeItemModal, showAugmentDetails, closeAugModal, openPlayerModal, closePlayerModal, overviewSearch, searchPlayer };
