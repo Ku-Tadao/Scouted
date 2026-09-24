@@ -54,7 +54,7 @@ assert.ok(calls.filter((u) => u.includes('/accounts/')).every((u) => u.startsWit
 // Next pass over the same board resolves the rest, stopping cleanly on a 429.
 calls.length = 0;
 rateLimitAfter = 3;
-await worker.scheduled({ scheduledTime: slot(18) }, env);
+await worker.scheduled({ scheduledTime: slot(45) }, env); // one full cycle (15 regions x 3 tiers) later
 snap = JSON.parse(store.get('lb:na1:challenger'));
 assert.equal(snap.unresolvedNames, 2);
 assert.equal(calls.filter((u) => u.includes('/accounts/by-puuid/')).length, 4);

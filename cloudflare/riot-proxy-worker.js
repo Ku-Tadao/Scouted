@@ -1,4 +1,4 @@
-const REGIONS = ['na1', 'euw1', 'eun1', 'kr', 'jp1', 'oc1'];
+const REGIONS = ['na1', 'euw1', 'eun1', 'kr', 'jp1', 'oc1', 'br1', 'la1', 'la2', 'tr1', 'ru', 'me1', 'sg2', 'tw2', 'vn2'];
 const TIERS = ['challenger', 'grandmaster', 'master'];
 const BOARDS = REGIONS.flatMap((region) => TIERS.map((tier) => ({ region, tier })));
 // Free Workers plan allows 50 subrequests per invocation: 1 league fetch + 45 name lookups.
@@ -44,7 +44,7 @@ export default {
     return json({ error: 'Not found' }, 404, request);
   },
 
-  // One board per 5-minute slot: all 18 boards refresh every 90 minutes, and each run
+  // One board per 5-minute slot: all 45 boards refresh every ~3.75 hours, and each run
   // costs ~2 KV writes (≈580/day, under the free 1,000/day). Works with a */5 or every-minute cron.
   async scheduled(event, env) {
     if (!env.RIOT_API_KEY || !env.SCOUTED_KV) return;

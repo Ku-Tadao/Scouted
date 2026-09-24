@@ -823,9 +823,10 @@ async function loadLeaderboard() {
   const region = state.lbRegion;
   const tier = state.lbTier;
   const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+  const regionLabel = document.querySelector('.region-btn[data-region="' + region + '"]')?.textContent || region.toUpperCase();
   const seq = ++leaderboardSeq;
 
-  setLeaderboardStatus('Loading ' + tierLabel + ' — ' + region.toUpperCase() + '...');
+  setLeaderboardStatus('Loading ' + tierLabel + ' — ' + regionLabel + '...');
 
   try {
     const endpoint =
@@ -844,11 +845,11 @@ async function loadLeaderboard() {
     renderLeaderboard(payload.entries || []);
     const updated = payload.fetchedAt ? timeAgo(Date.parse(payload.fetchedAt)) : 'just now';
     const pending = payload.unresolvedNames ? ' — ' + payload.unresolvedNames + ' names still resolving' : '';
-    setLeaderboardStatus(tierLabel + ' — ' + region.toUpperCase() + ' — Updated ' + updated + pending);
+    setLeaderboardStatus(tierLabel + ' — ' + regionLabel + ' — Updated ' + updated + pending);
   } catch (error) {
     if (seq !== leaderboardSeq) return;
     console.error('Leaderboard load error:', error);
-    setLeaderboardStatus(tierLabel + ' — ' + region.toUpperCase() + ' — Unable to load leaderboard.');
+    setLeaderboardStatus(tierLabel + ' — ' + regionLabel + ' — Unable to load leaderboard.');
     setLeaderboardPlaceholder('Could not load leaderboard data right now.');
   }
 }

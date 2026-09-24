@@ -56,12 +56,12 @@ The client only sees `PUBLIC_RIOT_PROXY_URL` (non-secret). The Riot API key rema
 ### Endpoints
 
 - `GET /leaderboard?region=euw1&tier=challenger` — KV snapshot first, live Riot fallback.
-- `GET /player?riotId=Name%23TAG` — account, TFT region, ranks and last 10 matches (~14 Riot calls per search).
+- `GET /player?riotId=Name%23TAG` (or `?puuid=`) — account, TFT region, ranks and last 10 matches (~14 Riot calls per search).
 - `GET /health`
 
 ### Leaderboard refresh
 
-- Each 5-minute cron slot refreshes one region/tier board, so all 18 boards refresh every 90 minutes.
+- Each 5-minute cron slot refreshes one region/tier board, so all 45 boards (15 regions × 3 tiers) refresh every ~3.75 hours.
 - Each run resolves up to 45 missing player names (Riot IDs via account-v1), top ranks first, and stops early on a 429.
 - Names are stored per region in one KV key (`names:<region>`); snapshots in `lb:<region>:<tier>`.
 - Sized for the free plans: ≤ 46 subrequests per run, ~580 KV writes/day, well under the personal-key rate limit.

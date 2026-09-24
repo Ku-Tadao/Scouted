@@ -620,7 +620,7 @@ section.content { animation:fadeUp .45s cubic-bezier(.4,0,.2,1) both; }
 .region-btn:hover { border-color:var(--brand); color:var(--brand); }
 .region-btn.active { background:var(--brand); color:#fff; border-color:var(--brand); }
 .lb-tier-tabs {
-    display:flex; gap:.4rem; margin-bottom:1rem;
+    display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:1rem;
 }
 .lb-tier-tab {
     border:1px solid var(--border); background:var(--surface-strong); color:var(--muted);
