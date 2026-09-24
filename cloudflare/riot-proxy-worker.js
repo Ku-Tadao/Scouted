@@ -133,10 +133,18 @@ async function refreshBoard(env, region, tier) {
   );
 }
 
-// ponytail: no per-visitor rate limit; each search costs ~14 Riot calls from the shared key.
-// Add a Workers rate-limit binding if searches start eating the key's budget.
+// Each search costs 14 Riot calls: 2 on the account host, 1 on the platform, 11 on the match cluster.
+// Riot limits each routing host separately, so the match cluster is the bottleneck:
+// PLAYER_CLUSTER_LIMITER (4/min per cluster → 88 calls per 2 min) keeps a personal key under 100/2min.
+// PLAYER_IP_LIMITER (6/min per visitor) stops one visitor from using up that budget.
+// Limits are counted per Cloudflare location; raise them with a production key.
 async function player(url, env, request) {
   const apiKey = env.RIOT_API_KEY;
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  if (env.PLAYER_IP_LIMITER && !(await env.PLAYER_IP_LIMITER.limit({ key: ip })).success) {
+    return json({ error: 'Too many searches, wait a minute and try again' }, 429, request);
+  }
+
   const puuidParam = url.searchParams.get('puuid');
   let accountUrl;
 
@@ -165,6 +173,9 @@ async function player(url, env, request) {
   const region = String(home.data.region || '').toLowerCase();
   const matchRouting = MATCH_ROUTING[region];
   if (!matchRouting) return json({ error: `Unsupported region: ${region}` }, 502, request);
+  if (env.PLAYER_CLUSTER_LIMITER && !(await env.PLAYER_CLUSTER_LIMITER.limit({ key: matchRouting })).success) {
+    return json({ error: 'Player search is busy right now, try again in a minute' }, 429, request);
+  }
 
   const [ranks, matchIds] = await Promise.all([
     riotJson(`https://${region}.api.riotgames.com/tft/league/v1/by-puuid/${encodeURIComponent(puuid)}`, apiKey, 60),

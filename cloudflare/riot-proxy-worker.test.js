@@ -92,6 +92,23 @@ assert.ok(calls[0].startsWith('https://europe.api.riotgames.com/riot/account/v1/
 assert.ok(!calls.some((u) => u.includes('/by-riot-id/')));
 assert.equal((await worker.fetch(new Request('https://w/player?puuid=' + encodeURIComponent('../x')), env)).status, 400);
 
+// Rate limits: per visitor IP, then per match cluster once the player's region is known.
+const limiter = (max) => { const counts = new Map(); return { async limit({ key }) { counts.set(key, (counts.get(key) || 0) + 1); return { success: counts.get(key) <= max }; } }; };
+const limited = { ...env, PLAYER_IP_LIMITER: limiter(6), PLAYER_CLUSTER_LIMITER: limiter(4) };
+const search = (ip) => worker.fetch(new Request('https://w/player?puuid=me', { headers: { 'CF-Connecting-IP': ip } }), limited);
+for (let i = 0; i < 4; i++) assert.equal((await search('1.1.1.1')).status, 200);
+calls.length = 0;
+const busy = await search('2.2.2.2'); // 5th search on the sea cluster
+assert.equal(busy.status, 429);
+assert.match((await busy.json()).error, /busy/);
+assert.ok(!calls.some((u) => u.includes('.api.riotgames.com/tft/')), 'no platform or match calls once the cluster is full');
+for (let i = 0; i < 2; i++) await search('1.1.1.1'); // 6 total from this IP
+calls.length = 0;
+const tooMany = await search('1.1.1.1');
+assert.equal(tooMany.status, 429);
+assert.match((await tooMany.json()).error, /Too many searches/);
+assert.equal(calls.length, 0, 'IP limit is checked before any Riot call');
+
 // Bad Riot ID is rejected before any Riot call.
 calls.length = 0;
 assert.equal((await worker.fetch(new Request('https://w/player?riotId=nohash'), env)).status, 400);
