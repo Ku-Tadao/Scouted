@@ -9,20 +9,14 @@ kv_namespaces = [
   { binding = "SCOUTED_KV", id = "1d1a05acd9474835a8761572bd912c69" },
 ]
 
-# /player limits; see the comment above player() in riot-proxy-worker.js for the math.
-[[ratelimits]]
-name = "PLAYER_IP_LIMITER"
-namespace_id = "1001"
-  [ratelimits.simple]
-  limit = 6
-  period = 60
+# /player rate limits (see the comment above player() in riot-proxy-worker.js).
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
 
-[[ratelimits]]
-name = "PLAYER_CLUSTER_LIMITER"
-namespace_id = "1002"
-  [ratelimits.simple]
-  limit = 4
-  period = 60
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RateLimiter"]
 
 [triggers]
 crons = ["*/5 * * * *"]

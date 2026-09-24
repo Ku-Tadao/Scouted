@@ -1,6 +1,6 @@
 // Run: node cloudflare/riot-proxy-worker.test.js
 import assert from 'node:assert/strict';
-import worker from './riot-proxy-worker.js';
+import worker, { RateLimiter } from './riot-proxy-worker.js';
 
 const calls = [];
 let rateLimitAfter = Infinity;
@@ -93,8 +93,19 @@ assert.ok(!calls.some((u) => u.includes('/by-riot-id/')));
 assert.equal((await worker.fetch(new Request('https://w/player?puuid=' + encodeURIComponent('../x')), env)).status, 400);
 
 // Rate limits: per visitor IP, then per match cluster once the player's region is known.
-const limiter = (max) => { const counts = new Map(); return { async limit({ key }) { counts.set(key, (counts.get(key) || 0) + 1); return { success: counts.get(key) <= max }; } }; };
-const limited = { ...env, PLAYER_IP_LIMITER: limiter(6), PLAYER_CLUSTER_LIMITER: limiter(4) };
+// Fake Durable Object namespace running the real RateLimiter class on in-memory storage.
+const objects = new Map();
+const RATE_LIMITER = {
+  idFromName: (name) => name,
+  get: (id) => {
+    if (!objects.has(id)) {
+      const mem = new Map();
+      objects.set(id, new RateLimiter({ storage: { get: async (k) => mem.get(k), put: async (k, v) => mem.set(k, v) } }));
+    }
+    return { fetch: (url) => objects.get(id).fetch(new Request(url)) };
+  },
+};
+const limited = { ...env, RATE_LIMITER };
 const search = (ip) => worker.fetch(new Request('https://w/player?puuid=me', { headers: { 'CF-Connecting-IP': ip } }), limited);
 for (let i = 0; i < 4; i++) assert.equal((await search('1.1.1.1')).status, 200);
 calls.length = 0;
@@ -108,6 +119,14 @@ const tooMany = await search('1.1.1.1');
 assert.equal(tooMany.status, 429);
 assert.match((await tooMany.json()).error, /Too many searches/);
 assert.equal(calls.length, 0, 'IP limit is checked before any Riot call');
+assert.equal(objects.size, 3, 'one limiter object per key: 2 IPs + the sea cluster');
+
+// The window slides: a minute later the same IP can search again.
+const realNow = Date.now;
+Date.now = () => realNow() + 61_000;
+assert.equal((await search('3.3.3.3')).status, 200);
+assert.equal((await search('1.1.1.1')).status, 200);
+Date.now = realNow;
 
 // Bad Riot ID is rejected before any Riot call.
 calls.length = 0;

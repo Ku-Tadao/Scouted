@@ -135,13 +135,15 @@ async function refreshBoard(env, region, tier) {
 
 // Each search costs 14 Riot calls: 2 on the account host, 1 on the platform, 11 on the match cluster.
 // Riot limits each routing host separately, so the match cluster is the bottleneck:
-// PLAYER_CLUSTER_LIMITER (4/min per cluster → 88 calls per 2 min) keeps a personal key under 100/2min.
-// PLAYER_IP_LIMITER (6/min per visitor) stops one visitor from using up that budget.
-// Limits are counted per Cloudflare location; raise them with a production key.
+// 4 searches/min per cluster (88 calls per 2 min) keeps a personal key under 100/2min, and
+// 6/min per visitor IP stops one visitor from using up that budget. Raise both with a production key.
+const IP_SEARCHES_PER_MIN = 6;
+const CLUSTER_SEARCHES_PER_MIN = 4;
+
 async function player(url, env, request) {
   const apiKey = env.RIOT_API_KEY;
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  if (env.PLAYER_IP_LIMITER && !(await env.PLAYER_IP_LIMITER.limit({ key: ip })).success) {
+  if (!(await allow(env, `ip:${ip}`, IP_SEARCHES_PER_MIN))) {
     return json({ error: 'Too many searches, wait a minute and try again' }, 429, request);
   }
 
@@ -173,7 +175,7 @@ async function player(url, env, request) {
   const region = String(home.data.region || '').toLowerCase();
   const matchRouting = MATCH_ROUTING[region];
   if (!matchRouting) return json({ error: `Unsupported region: ${region}` }, 502, request);
-  if (env.PLAYER_CLUSTER_LIMITER && !(await env.PLAYER_CLUSTER_LIMITER.limit({ key: matchRouting })).success) {
+  if (!(await allow(env, `cluster:${matchRouting}`, CLUSTER_SEARCHES_PER_MIN))) {
     return json({ error: 'Player search is busy right now, try again in a minute' }, 429, request);
   }
 
@@ -212,6 +214,33 @@ async function player(url, env, request) {
     200,
     request,
   );
+}
+
+// One RateLimiter object per key, so every request for that key is counted in one place, exactly.
+async function allow(env, key, perMinute) {
+  if (!env.RATE_LIMITER) return true;
+  const stub = env.RATE_LIMITER.get(env.RATE_LIMITER.idFromName(key));
+  const res = await stub.fetch(`https://rate-limiter/?limit=${perMinute}`);
+  return res.status === 200;
+}
+
+// Sliding 60s window of accepted request times. Storage ops are serialized per object (input gates),
+// so the read-modify-write can't race. Rejected requests aren't recorded, so spamming doesn't extend the block.
+// ponytail: one tiny stored array per visitor IP is kept forever; add an alarm that clears idle objects if that grows.
+export class RateLimiter {
+  constructor(state) {
+    this.storage = state.storage;
+  }
+
+  async fetch(request) {
+    const limit = Number(new URL(request.url).searchParams.get('limit')) || 1;
+    const now = Date.now();
+    const hits = ((await this.storage.get('hits')) || []).filter((t) => t > now - 60_000);
+    if (hits.length >= limit) return new Response('limited', { status: 429 });
+    hits.push(now);
+    await this.storage.put('hits', hits);
+    return new Response('ok');
+  }
 }
 
 function summarizeMatch(match, puuid) {
