@@ -12,7 +12,7 @@ globalThis.fetch = async (url) => {
   }
   if (url.includes('/accounts/by-puuid/')) {
     if (calls.filter((u) => u.includes('/accounts/by-puuid/')).length > rateLimitAfter) return new Response('', { status: 429 });
-    return ok({ gameName: url.split('/').pop(), tagLine: 'TAG' });
+    return ok({ puuid: url.split('/').pop(), gameName: url.split('/').pop(), tagLine: 'TAG' });
   }
   if (url.includes('/accounts/by-riot-id/')) return ok({ puuid: 'me', gameName: 'Some Player', tagLine: 'OCE' });
   if (url.includes('/region/by-game/tft/')) return ok({ puuid: 'me', game: 'tft', region: 'OC1' });
@@ -74,6 +74,15 @@ assert.equal(body.ranks[0].tier, 'DIAMOND');
 assert.deepEqual(body.matches[0], { id: 'OC1_1', playedAt: 1, queueId: 1100, placement: 3, level: 8, augments: ['A'], units: [{ id: 'TFT16_Ahri', stars: 2, items: ['X'] }] });
 assert.ok(calls.some((u) => u.startsWith('https://sea.api.riotgames.com/tft/match/v1/matches/OC1_1')));
 assert.ok(calls.some((u) => u.startsWith('https://oc1.api.riotgames.com/tft/league/v1/by-puuid/me')));
+
+// Player search by puuid (leaderboard row click) skips the Riot ID lookup.
+rateLimitAfter = Infinity;
+calls.length = 0;
+const byPuuid = await worker.fetch(new Request('https://w/player?puuid=me'), env);
+assert.equal(byPuuid.status, 200);
+assert.ok(calls[0].startsWith('https://europe.api.riotgames.com/riot/account/v1/accounts/by-puuid/me'));
+assert.ok(!calls.some((u) => u.includes('/by-riot-id/')));
+assert.equal((await worker.fetch(new Request('https://w/player?puuid=' + encodeURIComponent('../x')), env)).status, 400);
 
 // Bad Riot ID is rejected before any Riot call.
 calls.length = 0;

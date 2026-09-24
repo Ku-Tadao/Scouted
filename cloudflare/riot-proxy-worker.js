@@ -133,20 +133,25 @@ async function refreshBoard(env, region, tier) {
 // Add a Workers rate-limit binding if searches start eating the key's budget.
 async function player(url, env, request) {
   const apiKey = env.RIOT_API_KEY;
-  const riotId = (url.searchParams.get('riotId') || '').trim();
-  const hash = riotId.lastIndexOf('#');
-  const gameName = riotId.slice(0, hash).trim();
-  const tagLine = riotId.slice(hash + 1).trim();
+  const puuidParam = url.searchParams.get('puuid');
+  let accountUrl;
 
-  if (hash < 1 || !gameName || !tagLine || gameName.length > 16 || tagLine.length > 5) {
-    return json({ error: 'Enter a Riot ID like Name#TAG' }, 400, request);
+  if (puuidParam) {
+    if (!/^[\w-]{1,100}$/.test(puuidParam)) return json({ error: 'Invalid puuid' }, 400, request);
+    accountUrl = `${ACCOUNT_HOST}/riot/account/v1/accounts/by-puuid/${puuidParam}`;
+  } else {
+    const riotId = (url.searchParams.get('riotId') || '').trim();
+    const hash = riotId.lastIndexOf('#');
+    const gameName = riotId.slice(0, hash).trim();
+    const tagLine = riotId.slice(hash + 1).trim();
+
+    if (hash < 1 || !gameName || !tagLine || gameName.length > 16 || tagLine.length > 5) {
+      return json({ error: 'Enter a Riot ID like Name#TAG' }, 400, request);
+    }
+    accountUrl = `${ACCOUNT_HOST}/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
   }
 
-  const account = await riotJson(
-    `${ACCOUNT_HOST}/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,
-    apiKey,
-    3600,
-  );
+  const account = await riotJson(accountUrl, apiKey, 3600);
   if (!account.ok) return riotError(account, request, 'Player not found');
   const puuid = account.data.puuid;
 

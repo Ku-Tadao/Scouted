@@ -646,39 +646,46 @@ function closeAugModal() {
 }
 
 // ── Player Search ──
-function openPlayerModal(prefill) {
+function openPlayerModal(prefill, puuid) {
   const m = document.getElementById('playerModal');
   if (!m) return;
   m.classList.remove('hidden');
   const pi = document.getElementById('playerInput');
-  if (pi && prefill) pi.value = prefill;
+  if (pi && (prefill || puuid)) pi.value = prefill || '';
   if (pi) pi.focus();
-  if (prefill) searchPlayer();
+  if (prefill || puuid) searchPlayer(puuid);
 }
 
-async function searchPlayer() {
+let playerSearchSeq = 0;
+
+/** Search by the Riot ID in the input, or by puuid when given (leaderboard rows). */
+async function searchPlayer(puuid) {
   const input = document.getElementById('playerInput');
   const results = document.getElementById('playerSearchResults');
   const profile = document.getElementById('playerProfile');
   if (!input || !results || !profile) return;
   const riotId = input.value.trim();
-  if (!riotId) return;
+  if (!puuid && !riotId) return;
 
   profile.innerHTML = '';
   profile.classList.add('hidden');
   if (!RIOT_PROXY_URL) { results.textContent = 'Player search is not configured yet.'; return; }
-  if (!riotId.includes('#')) { results.textContent = 'Enter a Riot ID like Name#TAG.'; return; }
+  if (!puuid && !riotId.includes('#')) { results.textContent = 'Enter a Riot ID like Name#TAG.'; return; }
 
+  const seq = ++playerSearchSeq;
   results.textContent = 'Searching...';
   try {
-    const res = await fetch(RIOT_PROXY_URL + '/player?riotId=' + encodeURIComponent(riotId));
+    const query = puuid ? 'puuid=' + encodeURIComponent(puuid) : 'riotId=' + encodeURIComponent(riotId);
+    const res = await fetch(RIOT_PROXY_URL + '/player?' + query);
     const body = await res.json().catch(() => ({}));
+    if (seq !== playerSearchSeq) return; // a newer search replaced this one
     if (!res.ok) throw new Error(typeof body.error === 'string' ? body.error : 'Search failed.');
     results.textContent = '';
+    input.value = body.riotId;
     profile.innerHTML = renderPlayerProfile(body);
     profile.classList.remove('hidden');
   } catch (error) {
-    results.textContent = error.message || 'Search failed.';
+    if (seq === playerSearchSeq) results.textContent = error.message || 'Search failed.';
   }
 }
 
@@ -784,10 +791,16 @@ function renderLeaderboard(entries) {
       const losses = Number(entry.losses || 0);
       const rank = Number(entry.rank || idx + 1);
       const lp = Number(entry.leaguePoints || 0);
+      const name = entry.summonerName || 'Unknown';
+      const rowAttrs = entry.puuid
+        ? ' class="lb-row-link" tabindex="0" data-puuid="' + esc(entry.puuid) + '"' +
+          (name.includes('#') ? ' data-riot-id="' + esc(name) + '"' : '') +
+          ' aria-label="View ' + esc(name.includes('#') ? name : 'player at rank ' + rank) + '"'
+        : '';
       return (
-        '<tr>' +
+        '<tr' + rowAttrs + '>' +
           '<td class="lb-rank">' + rank + '</td>' +
-          '<td class="lb-player">' + esc(entry.summonerName || 'Unknown') + '</td>' +
+          '<td class="lb-player">' + esc(name) + '</td>' +
           '<td>' + lp + '</td>' +
           '<td>' + wins + '</td>' +
           '<td>' + losses + '</td>' +
@@ -797,6 +810,8 @@ function renderLeaderboard(entries) {
     })
     .join('');
 }
+
+let leaderboardSeq = 0;
 
 async function loadLeaderboard() {
   if (!RIOT_PROXY_URL) {
@@ -808,6 +823,7 @@ async function loadLeaderboard() {
   const region = state.lbRegion;
   const tier = state.lbTier;
   const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+  const seq = ++leaderboardSeq;
 
   setLeaderboardStatus('Loading ' + tierLabel + ' — ' + region.toUpperCase() + '...');
 
@@ -815,6 +831,7 @@ async function loadLeaderboard() {
     const endpoint =
       RIOT_PROXY_URL + '/leaderboard?region=' + encodeURIComponent(region) + '&tier=' + encodeURIComponent(tier);
     const res = await fetch(endpoint);
+    if (seq !== leaderboardSeq) return; // user switched region/tier meanwhile
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -823,11 +840,13 @@ async function loadLeaderboard() {
     }
 
     const payload = await res.json();
+    if (seq !== leaderboardSeq) return;
     renderLeaderboard(payload.entries || []);
     const updated = payload.fetchedAt ? timeAgo(Date.parse(payload.fetchedAt)) : 'just now';
     const pending = payload.unresolvedNames ? ' — ' + payload.unresolvedNames + ' names still resolving' : '';
     setLeaderboardStatus(tierLabel + ' — ' + region.toUpperCase() + ' — Updated ' + updated + pending);
   } catch (error) {
+    if (seq !== leaderboardSeq) return;
     console.error('Leaderboard load error:', error);
     setLeaderboardStatus(tierLabel + ' — ' + region.toUpperCase() + ' — Unable to load leaderboard.');
     setLeaderboardPlaceholder('Could not load leaderboard data right now.');
@@ -946,9 +965,21 @@ function bind() {
   if (augModal) augModal.addEventListener('click', (e) => { if (e.target === augModal) closeAugModal(); });
 
   const psb = document.getElementById('playerSearchBtn');
-  if (psb) psb.addEventListener('click', searchPlayer);
+  if (psb) psb.addEventListener('click', () => searchPlayer());
   const pin = document.getElementById('playerInput');
   if (pin) pin.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchPlayer(); });
+
+  // Leaderboard rows → player profile (rows are re-rendered, so delegate from the body)
+  const lbBody = document.getElementById('lbBody');
+  if (lbBody) {
+    const openRow = (row) => { if (row) openPlayerModal(row.dataset.riotId || '', row.dataset.puuid); };
+    lbBody.addEventListener('click', (e) => openRow(e.target.closest('tr[data-puuid]')));
+    lbBody.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const row = e.target.closest('tr[data-puuid]');
+      if (row) { e.preventDefault(); openRow(row); }
+    });
+  }
 
   const pmc = document.getElementById('playerModalClose');
   if (pmc) pmc.addEventListener('click', closePlayerModal);

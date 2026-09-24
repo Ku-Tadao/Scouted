@@ -652,6 +652,9 @@ section.content { animation:fadeUp .45s cubic-bezier(.4,0,.2,1) both; }
 .lb-table tbody tr:last-child td { border-bottom:none; }
 .lb-table tbody tr { transition:background .15s ease; }
 .lb-table tbody tr:hover { background:var(--surface-strong); }
+.lb-row-link { cursor:pointer; }
+.lb-row-link:hover .lb-player { color:var(--brand); }
+.lb-row-link:focus-visible { outline:2px solid var(--brand); outline-offset:-2px; }
 .lb-rank-cell {
     font-family:"Exo 2",system-ui,sans-serif; font-weight:700; font-size:1rem; color:var(--brand);
 }
