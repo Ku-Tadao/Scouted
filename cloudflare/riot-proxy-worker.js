@@ -1,5 +1,7 @@
 const REGIONS = ['na1', 'euw1', 'eun1', 'kr', 'jp1', 'oc1', 'br1', 'la1', 'la2', 'tr1', 'ru', 'me1', 'sg2', 'tw2', 'vn2'];
 const TIERS = ['challenger', 'grandmaster', 'master'];
+// Master boards are too large to name (VN alone has ~8k players); their rows still open by puuid.
+const NAMED_TIERS = ['challenger', 'grandmaster'];
 const BOARDS = REGIONS.flatMap((region) => TIERS.map((tier) => ({ region, tier })));
 // Free Workers plan allows 50 subrequests per invocation: 1 league fetch + 45 name lookups.
 const NAME_LOOKUP_BUDGET = 45;
@@ -100,7 +102,9 @@ async function refreshBoard(env, region, tier) {
   const missing = board.entries.filter((entry) => entry.puuid && !names[entry.puuid]);
   let resolved = 0;
 
-  for (const entry of missing.slice(0, NAME_LOOKUP_BUDGET)) {
+  const lookups = NAMED_TIERS.includes(tier) ? missing.slice(0, NAME_LOOKUP_BUDGET) : [];
+
+  for (const entry of lookups) {
     const account = await riotJson(`${ACCOUNT_HOST}/riot/account/v1/accounts/by-puuid/${encodeURIComponent(entry.puuid)}`, apiKey);
     if (account.status === 429) break; // next pass picks up where this one stopped
     if (account.ok && account.data?.gameName) {
@@ -122,7 +126,7 @@ async function refreshBoard(env, region, tier) {
       tier,
       queue: board.queue,
       fetchedAt: new Date().toISOString(),
-      unresolvedNames: missing.length - resolved,
+      unresolvedNames: NAMED_TIERS.includes(tier) ? missing.length - resolved : undefined,
       entries: board.entries,
     }),
     { expirationTtl: SNAPSHOT_TTL },

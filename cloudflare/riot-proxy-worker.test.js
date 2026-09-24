@@ -7,7 +7,7 @@ let rateLimitAfter = Infinity;
 globalThis.fetch = async (url) => {
   calls.push(url);
   const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
-  if (url.includes('/tft/league/v1/challenger')) {
+  if (/\/tft\/league\/v1\/(challenger|grandmaster|master)$/.test(url)) {
     return ok({ queue: 'RANKED_TFT', entries: Array.from({ length: 50 }, (_, i) => ({ puuid: `p${i}`, leaguePoints: i, wins: 1, losses: 1 })) });
   }
   if (url.includes('/accounts/by-puuid/')) {
@@ -58,6 +58,14 @@ await worker.scheduled({ scheduledTime: slot(45) }, env); // one full cycle (15 
 snap = JSON.parse(store.get('lb:na1:challenger'));
 assert.equal(snap.unresolvedNames, 2);
 assert.equal(calls.filter((u) => u.includes('/accounts/by-puuid/')).length, 4);
+
+// Master boards skip name lookups but still show names already known for the region.
+calls.length = 0;
+await worker.scheduled({ scheduledTime: slot(2) }, env); // slot 2 = na1 master
+snap = JSON.parse(store.get('lb:na1:master'));
+assert.equal(calls.filter((u) => u.includes('/accounts/')).length, 0);
+assert.equal(snap.unresolvedNames, undefined);
+assert.equal(snap.entries[0].summonerName, 'p49#TAG');
 
 // Leaderboard serves the snapshot.
 const lb = await worker.fetch(new Request('https://w/leaderboard?region=na1&tier=challenger'), env);
