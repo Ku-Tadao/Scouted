@@ -73,6 +73,23 @@ assert.equal(calls.filter((u) => u.includes('/accounts/')).length, 0);
 assert.equal(snap.unresolvedNames, undefined);
 assert.equal(snap.entries[0].summonerName, 'p49#TAG');
 
+// Stale names: missing ones first, then legacy string entries (no timestamp) and week-old names; fresh ones are skipped.
+rateLimitAfter = Infinity;
+const seeded = JSON.parse(store.get('names:na1'));
+seeded.p49 = 'Old#NAME'; // format written before names had timestamps
+seeded.p48 = { name: 'Renamed#OLD', at: Date.now() - 8 * 24 * 60 * 60 * 1000 };
+store.set('names:na1', JSON.stringify(seeded));
+calls.length = 0;
+await worker.scheduled({ scheduledTime: slot(90) }, env); // na1 challenger, two cycles later
+const lookedUp = calls.filter((u) => u.includes('/accounts/by-puuid/')).map((u) => u.split('/').pop());
+assert.deepEqual(lookedUp, ['p1', 'p0', 'p49', 'p48']);
+snap = JSON.parse(store.get('lb:na1:challenger'));
+assert.equal(snap.unresolvedNames, 0);
+assert.equal(snap.entries[0].summonerName, 'p49#TAG');
+assert.equal(snap.entries[1].summonerName, 'p48#TAG');
+const saved = JSON.parse(store.get('names:na1'));
+assert.ok(Object.values(saved).every((v) => typeof v.name === 'string' && v.at > 0), 'every name stored with a timestamp');
+
 // Leaderboard serves the snapshot.
 const lb = await worker.fetch(new Request('https://w/leaderboard?region=na1&tier=challenger'), env);
 assert.equal((await lb.json()).entries[0].summonerName, 'p49#TAG');

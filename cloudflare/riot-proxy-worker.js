@@ -6,6 +6,8 @@ const BOARDS = REGIONS.flatMap((region) => TIERS.map((tier) => ({ region, tier }
 // Free Workers plan allows 50 subrequests per invocation: 1 league fetch + 45 name lookups.
 const NAME_LOOKUP_BUDGET = 45;
 const NAME_REQUEST_DELAY_MS = 75;
+// Players can change their Riot ID, so names older than this are re-checked with any spare lookups.
+const NAME_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const SNAPSHOT_TTL = 60 * 60 * 24 * 2;
 const PLAYER_MATCH_COUNT = 10;
 // account-v1 is global: any cluster resolves any player.
@@ -96,25 +98,34 @@ async function refreshBoard(env, region, tier) {
   const board = await fetchBoard(apiKey, region, tier);
   if (!board.ok) return;
 
-  // ponytail: names are never pruned or refreshed, so renamed players keep their old Riot ID;
-  // store { name, at } and re-resolve old entries if that matters.
+  // Missing names first, then names older than NAME_MAX_AGE_MS, oldest first.
+  // ponytail: the names map is never pruned, so players who left every board stay in it; prune by `at` if it grows.
   const names = await getNames(env.SCOUTED_KV, region);
+  const now = Date.now();
   const missing = board.entries.filter((entry) => entry.puuid && !names[entry.puuid]);
+  const stale = board.entries
+    .filter((entry) => names[entry.puuid] && names[entry.puuid].at < now - NAME_MAX_AGE_MS)
+    .sort((a, b) => names[a.puuid].at - names[b.puuid].at);
   let resolved = 0;
+  let changed = false;
 
-  const lookups = NAMED_TIERS.includes(tier) ? missing.slice(0, NAME_LOOKUP_BUDGET) : [];
+  const lookups = NAMED_TIERS.includes(tier) ? [...missing, ...stale].slice(0, NAME_LOOKUP_BUDGET) : [];
 
   for (const entry of lookups) {
     const account = await riotJson(`${ACCOUNT_HOST}/riot/account/v1/accounts/by-puuid/${encodeURIComponent(entry.puuid)}`, apiKey);
     if (account.status === 429) break; // next pass picks up where this one stopped
     if (account.ok && account.data?.gameName) {
-      names[entry.puuid] = `${account.data.gameName}#${account.data.tagLine}`;
-      resolved += 1;
+      if (!names[entry.puuid]) resolved += 1;
+      names[entry.puuid] = { name: `${account.data.gameName}#${account.data.tagLine}`, at: now };
+      changed = true;
+    } else if (names[entry.puuid]) {
+      names[entry.puuid].at = now; // keep the old name, but don't retry it every run
+      changed = true;
     }
     await sleep(NAME_REQUEST_DELAY_MS);
   }
 
-  if (resolved > 0) {
+  if (changed) {
     await env.SCOUTED_KV.put(namesKey(region), JSON.stringify(names));
   }
 
@@ -341,12 +352,17 @@ async function fetchBoard(apiKey, region, tier) {
 
 function applyNames(entries, names) {
   for (const entry of entries) {
-    if (names[entry.puuid]) entry.summonerName = names[entry.puuid];
+    if (names[entry.puuid]) entry.summonerName = names[entry.puuid].name;
   }
 }
 
 async function getNames(kv, region) {
-  return (await kv.get(namesKey(region), 'json').catch(() => null)) || {};
+  const names = (await kv.get(namesKey(region), 'json').catch(() => null)) || {};
+  // Maps written before names had timestamps hold plain strings; treat those as due for a re-check.
+  for (const [puuid, value] of Object.entries(names)) {
+    if (typeof value === 'string') names[puuid] = { name: value, at: 0 };
+  }
+  return names;
 }
 
 function namesKey(region) {
