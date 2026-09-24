@@ -35,7 +35,7 @@ globalThis.fetch = async (url) => {
       metadata: { match_id: url.split('/').pop() },
       info: {
         game_datetime: 1, queue_id: 1100,
-        participants: [{ puuid: 'me', placement: 3, level: 8, augments: ['A'], units: [{ character_id: 'TFT16_Ahri', tier: 2, itemNames: ['X'] }] }],
+        participants: [{ puuid: 'me', placement: 3, level: 8, units: [{ character_id: 'TFT16_Ahri', tier: 2, itemNames: ['X'] }] }],
       },
     });
   }
@@ -108,7 +108,7 @@ assert.equal(res.status, 200, JSON.stringify(body));
 assert.equal(body.riotId, 'Some Player#OCE');
 assert.equal(body.region, 'oc1');
 assert.equal(body.ranks[0].tier, 'DIAMOND');
-assert.deepEqual(body.matches[0], { id: 'OC1_1', playedAt: 1, queueId: 1100, placement: 3, level: 8, augments: ['A'], units: [{ id: 'TFT16_Ahri', stars: 2, items: ['X'] }] });
+assert.deepEqual(body.matches[0], { id: 'OC1_1', playedAt: 1, queueId: 1100, placement: 3, level: 8, units: [{ id: 'TFT16_Ahri', stars: 2, items: ['X'] }] });
 assert.ok(calls.some((u) => u.startsWith('https://sea.api.riotgames.com/tft/match/v1/matches/OC1_1')));
 assert.ok(calls.some((u) => u.startsWith('https://oc1.api.riotgames.com/tft/league/v1/by-puuid/me')));
 
@@ -155,7 +155,9 @@ const RATE_LIMITER = {
   get: (id) => {
     if (!objects.has(id)) {
       const mem = new Map();
-      objects.set(id, new RateLimiter({ storage: { get: async (k) => mem.get(k), put: async (k, v) => mem.set(k, v) } }));
+      const storage = { get: async (k) => mem.get(k), put: async (k, v) => mem.set(k, v), deleteAll: async () => mem.clear() };
+      storage.setAlarm = async (t) => { storage.alarmAt = t; };
+      objects.set(id, new RateLimiter({ storage }));
     }
     return { fetch: (url) => objects.get(id).fetch(new Request(url)) };
   },
@@ -185,6 +187,12 @@ Date.now = () => realNow() + 61_000;
 assert.equal((await search('3.3.3.3')).status, 200);
 assert.equal((await search('1.1.1.1')).status, 200);
 Date.now = realNow;
+
+// Idle cleanup: each accepted hit schedules an alarm a minute out, and the alarm wipes the object.
+const idle = objects.get('ip:3.3.3.3');
+assert.ok(idle.storage.alarmAt > Date.now());
+await idle.alarm();
+assert.equal(await idle.storage.get('hits'), undefined);
 
 // Bad Riot ID is rejected before any Riot call.
 calls.length = 0;

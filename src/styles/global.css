@@ -746,8 +746,6 @@ section.content { animation:fadeUp .45s cubic-bezier(.4,0,.2,1) both; }
 .pp-stars-3 { color:#e6a030; }
 .pp-items { display:flex; gap:1px; }
 .pp-items img { width:12px; height:12px; border-radius:2px; }
-.pp-augments { display:flex; gap:.3rem; margin-top:.45rem; }
-.pp-augments img { width:22px; height:22px; border-radius:4px; }
 @media(max-width:560px) { .pm-search-row { flex-wrap:wrap; } .player-modal-content { padding:1.25rem; } }
 
 /* ═══ Champion Detail ═══ */

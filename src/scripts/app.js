@@ -775,11 +775,6 @@ function renderMatchRow(m) {
     h += '</span></div>';
   });
   h += '</div>';
-
-  const augs = (m.augments || []).map((id) => DATA.augments?.find((a) => a.id === id)).filter(Boolean);
-  if (augs.length) {
-    h += '<div class="pp-augments">' + augs.map((a) => '<img src="' + esc(a.icon) + '" alt="' + esc(a.name) + '" title="' + esc(a.name) + '" loading="lazy" />').join('') + '</div>';
-  }
   h += '</div></div>';
   return h;
 }

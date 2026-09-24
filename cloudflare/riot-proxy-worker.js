@@ -147,9 +147,9 @@ async function refreshBoard(env, region, tier) {
 
 // Each search costs 14 Riot calls: 2 on the account host (europe), 1 on the platform, 11 on the match cluster.
 // Riot limits each routing value separately. 4 searches/min per cluster = 88 match calls per 2 min, just under
-// a personal key's 100/2min. Europe also carries every account lookup and the cron's name lookups, so at peak
+// the key's 100/2min app limit. Europe also carries every account lookup and the cron's name lookups, so at peak
 // it can still hit 429s; those surface as missingMatches instead of failing the search. 6/min per visitor IP
-// stops one visitor from using up the budget. Raise both with a production key.
+// stops one visitor from using up the budget. Raise both if Riot raises the key's app limit (now 20/1s, 100/2min).
 const IP_SEARCHES_PER_MIN = 6;
 const CLUSTER_SEARCHES_PER_MIN = 4;
 const TOO_MANY_SEARCHES = 'Too many searches, wait a minute and try again';
@@ -269,7 +269,7 @@ async function allow(env, key, perMinute) {
 
 // Sliding 60s window of accepted request times. Storage ops are serialized per object (input gates),
 // so the read-modify-write can't race. Rejected requests aren't recorded, so spamming doesn't extend the block.
-// ponytail: one tiny stored array per visitor IP is kept forever; add an alarm that clears idle objects if that grows.
+// An alarm 60s after the last accepted request wipes the object, so idle visitor IPs leave no stored data behind.
 export class RateLimiter {
   constructor(state) {
     this.storage = state.storage;
@@ -282,7 +282,13 @@ export class RateLimiter {
     if (hits.length >= limit) return new Response('limited', { status: 429 });
     hits.push(now);
     await this.storage.put('hits', hits);
+    await this.storage.setAlarm(now + 60_000);
     return new Response('ok');
+  }
+
+  // Every recorded hit is older than the window by now, so there is nothing worth keeping.
+  async alarm() {
+    await this.storage.deleteAll();
   }
 }
 
@@ -296,7 +302,6 @@ function summarizeMatch(match, puuid) {
     queueId: info.queue_id,
     placement: me.placement,
     level: me.level,
-    augments: me.augments || [],
     units: (me.units || []).map((u) => ({ id: u.character_id, stars: u.tier, items: u.itemNames || [] })),
   };
 }
