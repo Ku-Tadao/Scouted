@@ -4,6 +4,7 @@ import worker, { RateLimiter } from './riot-proxy-worker.js';
 
 const calls = [];
 let rateLimitAfter = Infinity;
+const match429s = new Map(); // matchId -> how many 429s to return before succeeding
 globalThis.fetch = async (url) => {
   calls.push(url);
   const ok = (body) => new Response(JSON.stringify(body), { status: 200 });
@@ -19,6 +20,11 @@ globalThis.fetch = async (url) => {
   if (url.includes('/tft/league/v1/by-puuid/')) return ok([{ queueType: 'RANKED_TFT', tier: 'DIAMOND', rank: 'II', leaguePoints: 40, wins: 10, losses: 20 }]);
   if (url.includes('/ids?')) return ok(['OC1_1', 'OC1_2']);
   if (url.includes('/tft/match/v1/matches/')) {
+    const id = url.split('/').pop();
+    if (match429s.get(id) > 0) {
+      match429s.set(id, match429s.get(id) - 1);
+      return new Response('', { status: 429, headers: { 'Retry-After': '1' } });
+    }
     return ok({
       metadata: { match_id: url.split('/').pop() },
       info: {
@@ -91,6 +97,13 @@ assert.equal(byPuuid.status, 200);
 assert.ok(calls[0].startsWith('https://europe.api.riotgames.com/riot/account/v1/accounts/by-puuid/me'));
 assert.ok(!calls.some((u) => u.includes('/by-riot-id/')));
 assert.equal((await worker.fetch(new Request('https://w/player?puuid=' + encodeURIComponent('../x')), env)).status, 400);
+
+// A 429 on a match fetch is retried once; a second 429 drops that match and reports it as missing.
+match429s.set('OC1_1', 1).set('OC1_2', 2);
+const retried = await (await worker.fetch(new Request('https://w/player?puuid=me'), env)).json();
+assert.deepEqual(retried.matches.map((m) => m.id), ['OC1_1']);
+assert.equal(retried.missingMatches, 1);
+assert.equal(body.missingMatches, 0);
 
 // Rate limits: per visitor IP, then per match cluster once the player's region is known.
 // Fake Durable Object namespace running the real RateLimiter class on in-memory storage.

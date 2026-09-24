@@ -133,10 +133,11 @@ async function refreshBoard(env, region, tier) {
   );
 }
 
-// Each search costs 14 Riot calls: 2 on the account host, 1 on the platform, 11 on the match cluster.
-// Riot limits each routing host separately, so the match cluster is the bottleneck:
-// 4 searches/min per cluster (88 calls per 2 min) keeps a personal key under 100/2min, and
-// 6/min per visitor IP stops one visitor from using up that budget. Raise both with a production key.
+// Each search costs 14 Riot calls: 2 on the account host (europe), 1 on the platform, 11 on the match cluster.
+// Riot limits each routing value separately. 4 searches/min per cluster = 88 match calls per 2 min, just under
+// a personal key's 100/2min. Europe also carries every account lookup and the cron's name lookups, so at peak
+// it can still hit 429s; those surface as missingMatches instead of failing the search. 6/min per visitor IP
+// stops one visitor from using up the budget. Raise both with a production key.
 const IP_SEARCHES_PER_MIN = 6;
 const CLUSTER_SEARCHES_PER_MIN = 4;
 
@@ -165,11 +166,11 @@ async function player(url, env, request) {
     accountUrl = `${ACCOUNT_HOST}/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
   }
 
-  const account = await riotJson(accountUrl, apiKey, 3600);
+  const account = await riotJson(accountUrl, apiKey, 3600, true);
   if (!account.ok) return riotError(account, request, 'Player not found');
   const puuid = account.data.puuid;
 
-  const home = await riotJson(`${ACCOUNT_HOST}/riot/account/v1/region/by-game/tft/by-puuid/${encodeURIComponent(puuid)}`, apiKey, 3600);
+  const home = await riotJson(`${ACCOUNT_HOST}/riot/account/v1/region/by-game/tft/by-puuid/${encodeURIComponent(puuid)}`, apiKey, 3600, true);
   if (!home.ok) return riotError(home, request, 'This player has not played TFT');
 
   const region = String(home.data.region || '').toLowerCase();
@@ -180,11 +181,12 @@ async function player(url, env, request) {
   }
 
   const [ranks, matchIds] = await Promise.all([
-    riotJson(`https://${region}.api.riotgames.com/tft/league/v1/by-puuid/${encodeURIComponent(puuid)}`, apiKey, 60),
+    riotJson(`https://${region}.api.riotgames.com/tft/league/v1/by-puuid/${encodeURIComponent(puuid)}`, apiKey, 60, true),
     riotJson(
       `https://${matchRouting}.api.riotgames.com/tft/match/v1/matches/by-puuid/${encodeURIComponent(puuid)}/ids?count=${PLAYER_MATCH_COUNT}`,
       apiKey,
       60,
+      true,
     ),
   ]);
   if (!ranks.ok) return riotError(ranks, request, 'Rank not found');
@@ -193,7 +195,7 @@ async function player(url, env, request) {
   // Matches never change, so they cache for a day.
   const matches = await Promise.all(
     matchIds.data.map((id) =>
-      riotJson(`https://${matchRouting}.api.riotgames.com/tft/match/v1/matches/${encodeURIComponent(id)}`, apiKey, 86400),
+      riotJson(`https://${matchRouting}.api.riotgames.com/tft/match/v1/matches/${encodeURIComponent(id)}`, apiKey, 86400, true),
     ),
   );
 
@@ -210,6 +212,7 @@ async function player(url, env, request) {
         losses: r.losses,
       })),
       matches: matches.filter((m) => m.ok).map((m) => summarizeMatch(m.data, puuid)).filter(Boolean),
+      missingMatches: matches.filter((m) => !m.ok).length,
     },
     200,
     request,
@@ -295,19 +298,23 @@ function isAllowedOrigin(origin) {
   );
 }
 
-// Single attempt, no retry: a 429 goes straight back to the caller (or ends the cron pass).
-async function riotJson(url, apiKey, cacheTtl = 0) {
+// By default a 429 goes straight back to the caller (or ends the cron pass). Player searches pass
+// retry429 to wait out a short per-second limit once: Riot usually asks for ~1s, capped at 2s here.
+async function riotJson(url, apiKey, cacheTtl = 0, retry429 = false) {
   const res = await fetch(url, {
     headers: { 'X-Riot-Token': apiKey },
     ...(cacheTtl ? { cf: { cacheTtl, cacheEverything: true } } : {}),
   });
   if (!res.ok) {
-    return {
-      ok: false,
-      status: res.status,
-      retryAfter: Number(res.headers.get('Retry-After')) || null,
-      details: (await res.text()).slice(0, 400),
-    };
+    const retryAfter = Number(res.headers.get('Retry-After')) || null;
+    // Read the body before anything else: unread responses hold one of the Worker's few connection slots.
+    const details = (await res.text()).slice(0, 400);
+    console.warn('Riot request failed', res.status, retryAfter, new URL(url).pathname);
+    if (res.status === 429 && retry429) {
+      await sleep(Math.min(retryAfter || 1, 2) * 1000);
+      return riotJson(url, apiKey, cacheTtl, false);
+    }
+    return { ok: false, status: res.status, retryAfter, details };
   }
   return { ok: true, status: res.status, data: await res.json() };
 }

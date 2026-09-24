@@ -705,8 +705,11 @@ function renderPlayerProfile(p) {
   });
   h += '</div>';
 
-  if (!p.matches || !p.matches.length) return h + '<p class="muted">No recent TFT matches.</p>';
-  h += '<div class="pp-matches">' + p.matches.map(renderMatchRow).join('') + '</div>';
+  const missing = p.missingMatches
+    ? '<p class="muted pp-missing">' + p.missingMatches + ' recent match' + (p.missingMatches === 1 ? '' : 'es') + " couldn't load (Riot rate limit). Try again in a minute.</p>"
+    : '';
+  if (!p.matches || !p.matches.length) return h + (missing || '<p class="muted">No recent TFT matches.</p>');
+  h += '<div class="pp-matches">' + p.matches.map(renderMatchRow).join('') + '</div>' + missing;
   return h;
 }
 
